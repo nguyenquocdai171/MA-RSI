@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 # --- CẤU HÌNH TRANG WEB ---
 st.set_page_config(layout="wide", page_title="Stock Advisor PRO", page_icon="📈")
 
-# --- CSS TÙY CHỈNH (Giữ nguyên giao diện Neon) ---
+# --- CSS TÙY CHỈNH ---
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;700;900&display=swap');
@@ -47,7 +47,6 @@ st.markdown("""
     }
     .bg-green { background: linear-gradient(135deg, #1b5e20 0%, #2e7d32 100%); }
     .bg-red { background: linear-gradient(135deg, #b71c1c 0%, #c62828 100%); }
-    .bg-orange { background: linear-gradient(135deg, #e65100 0%, #ef6c00 100%); }
     .bg-blue { background: linear-gradient(135deg, #0d47a1 0%, #1565c0 100%); }
     .result-title { font-size: 2.2rem; font-weight: 800; color: white; margin: 0; text-shadow: 0 2px 4px rgba(0,0,0,0.5); }
     .result-reason { font-size: 1.1rem; color: #EEE; margin-top: 10px; font-style: italic; }
@@ -94,8 +93,8 @@ def calculate_rsi(data, window=14):
     rsi = 100 - (100 / (1 + rs))
     return rsi
 
-# --- HÀM BACKTEST CHO TỪNG ĐƯỜNG MA ---
-def run_backtest_for_ma(prices, ma_series, rsi_series, stop_loss_pct):
+# --- HÀM BACKTEST CHO TỪNG ĐƯỜNG MA (Cập nhật tính lãi TB năm) ---
+def run_backtest_for_ma(prices_series, ma_series, rsi_series, stop_loss_pct):
     cash = 100_000_000
     initial_capital = cash
     shares = 0
@@ -103,16 +102,16 @@ def run_backtest_for_ma(prices, ma_series, rsi_series, stop_loss_pct):
     wins = 0
     
     # Chuyển sang numpy array để loop nhanh
-    p_arr = prices.values
+    p_arr = prices_series.values
     ma_arr = ma_series.values
     rsi_arr = rsi_series.values
     
     last_buy_price = 0
     use_sl = stop_loss_pct > 0
     
-    # Bắt đầu từ index 205 (đảm bảo đủ dữ liệu cho MA lớn nhất)
+    # Bắt đầu từ index 205
     start_idx = 205 
-    if len(p_arr) <= start_idx: return -999, 0, 0
+    if len(p_arr) <= start_idx: return -999, -999, 0, 0
 
     for i in range(start_idx, len(p_arr)):
         price = p_arr[i]
@@ -121,70 +120,75 @@ def run_backtest_for_ma(prices, ma_series, rsi_series, stop_loss_pct):
         
         if np.isnan(ma) or np.isnan(rsi): continue
         
-        # LOGIC MUA: Giá < MA và RSI < 30
+        # MUA
         if shares == 0:
             if price < ma and rsi < 30:
                 shares = cash / price
                 cash = 0
                 last_buy_price = price
         
-        # LOGIC BÁN: Giá > MA và RSI > 70 HOẶC Cắt lỗ
+        # BÁN
         elif shares > 0:
             is_sell = False
-            
-            # 1. Cắt lỗ
+            # Cắt lỗ
             if use_sl:
                 pct_loss = (price - last_buy_price) / last_buy_price * 100
                 if pct_loss <= -stop_loss_pct:
                     is_sell = True
             
-            # 2. Chốt lời theo chiến thuật
+            # Chốt lời
             if not is_sell:
                 if price > ma and rsi > 70:
                     is_sell = True
             
             if is_sell:
                 sell_val = shares * price
-                if sell_val > shares * last_buy_price:
-                    wins += 1
+                if sell_val > shares * last_buy_price: wins += 1
                 cash = sell_val
                 shares = 0
                 trade_count += 1
                 
     final_val = cash + (shares * p_arr[-1])
-    roi = ((final_val - initial_capital) / initial_capital) * 100
-    return roi, trade_count, wins
+    total_roi = ((final_val - initial_capital) / initial_capital) * 100
+    
+    # Tính lợi nhuận trung bình năm
+    start_date = prices_series.index[start_idx]
+    end_date = prices_series.index[-1]
+    days = (end_date - start_date).days
+    years = days / 365.25
+    
+    avg_annual_roi = total_roi / years if years > 0 else 0
+    
+    return total_roi, avg_annual_roi, trade_count, wins
 
-# --- HÀM TỐI ƯU HÓA (TÌM BEST MA) ---
+# --- HÀM TỐI ƯU HÓA ---
 def optimize_ma_strategy(df, stop_loss_pct):
     prices = df['Close']
     rsi = df['RSI']
-    
     results = []
-    
-    # Quét MA từ 5 đến 205, bước nhảy 10
     ma_ranges = range(5, 206, 10) 
     
-    # Progress bar giả lập nếu cần, ở đây chạy backend nhanh
     for ma_period in ma_ranges:
         ma_series = prices.rolling(window=ma_period).mean()
-        roi, trades, wins = run_backtest_for_ma(prices, ma_series, rsi, stop_loss_pct)
+        # Truyền cả series 'prices' để lấy index ngày tháng
+        total_roi, annual_roi, trades, wins = run_backtest_for_ma(prices, ma_series, rsi, stop_loss_pct)
         
         results.append({
             'MA': ma_period,
-            'ROI': roi,
+            'Total ROI': total_roi,
+            'Annual ROI': annual_roi,
             'Trades': trades,
             'Wins': wins
         })
         
-    # Sắp xếp tìm ROI cao nhất
     results_df = pd.DataFrame(results)
     if results_df.empty: return None, None
     
-    best_res = results_df.loc[results_df['ROI'].idxmax()]
+    # Sắp xếp theo Lợi nhuận Năm cao nhất
+    best_res = results_df.loc[results_df['Annual ROI'].idxmax()]
     return best_res, results_df
 
-# --- HÀM VẼ GIAO DIỆN CHỈ SỐ ---
+# --- HELPER UI ---
 def render_metric_card(label, value, delta=None, color=None):
     delta_html = ""
     if delta is not None:
@@ -201,7 +205,7 @@ def render_metric_card(label, value, delta=None, color=None):
     card_html = f"<div class='metric-container'><div class='metric-label'>{label}</div><div class='metric-value-box'>{value_html}{delta_html}</div></div>"
     st.markdown(card_html, unsafe_allow_html=True)
 
-# --- GIAO DIỆN CHÍNH ---
+# --- MAIN APP ---
 st.markdown("<h1 class='main-title'>STOCK ADVISOR PRO</h1>", unsafe_allow_html=True)
 st.markdown("<p class='sub-title'>Hệ thống Tối ưu hóa Chiến thuật MA & RSI</p>", unsafe_allow_html=True)
 
@@ -225,7 +229,6 @@ with col2:
         submit_button = st.form_submit_button(label='🚀 PHÂN TÍCH & TỐI ƯU HÓA', use_container_width=True)
 
 if submit_button or 'data' in st.session_state:
-    # Hack ẩn keyboard mobile
     js_hack = f"""<script>function forceBlur(){{const activeElement=window.parent.document.activeElement;if(activeElement){{activeElement.blur();}}window.parent.document.body.focus();}}forceBlur();setTimeout(forceBlur,200);</script><div style="display:none;">{random.random()}</div>"""
     components.html(js_hack, height=0)
 
@@ -245,32 +248,27 @@ if submit_button or 'data' in st.session_state:
         if 'data' not in st.session_state or st.session_state.get('current_symbol') != symbol:
             with st.spinner(f'Đang tải dữ liệu {ticker} và chạy tối ưu hóa...'):
                 try:
-                    # Lấy max lịch sử để tối ưu tốt nhất
                     df_full = yf.download(symbol, period="max", interval="1d", progress=False)
                     if df_full.empty:
                         st.error(f"❌ Không tìm thấy mã **{ticker}**!")
                         st.stop()
                     
                     if isinstance(df_full.columns, pd.MultiIndex): df_full.columns = df_full.columns.get_level_values(0)
-                    
-                    # Tính RSI trước
                     df_full['RSI'] = calculate_rsi(df_full['Close'], 14)
                     
-                    # Chạy tối ưu hóa
+                    # Tối ưu hóa
                     best_res, results_df = optimize_ma_strategy(df_full, stop_loss_input)
                     
                     if best_res is None:
                         st.error("Không đủ dữ liệu để tính toán.")
                         st.stop()
                         
-                    # Lưu thông tin Best MA vào session
                     st.session_state['data'] = df_full
                     st.session_state['best_ma'] = int(best_res['MA'])
-                    st.session_state['best_roi'] = best_res['ROI']
-                    st.session_state['top_mas'] = results_df.sort_values(by='ROI', ascending=False).head(5)
+                    st.session_state['best_annual_roi'] = best_res['Annual ROI'] # Lưu Annual ROI
+                    st.session_state['top_mas'] = results_df.sort_values(by='Annual ROI', ascending=False).head(5)
                     st.session_state['current_symbol'] = symbol
                     
-                    # Intraday
                     df_intra = yf.download(symbol, period="1d", interval="5m", progress=False)
                     if isinstance(df_intra.columns, pd.MultiIndex): df_intra.columns = df_intra.columns.get_level_values(0)
                     if not df_intra.empty:
@@ -288,10 +286,9 @@ if submit_button or 'data' in st.session_state:
             df = st.session_state['data']
             df_intra = st.session_state['data_intra']
             best_ma_val = st.session_state['best_ma']
-            best_roi_val = st.session_state['best_roi']
+            best_annual_roi_val = st.session_state['best_annual_roi']
             top_mas_df = st.session_state['top_mas']
             
-            # Tính đường Best MA cho toàn bộ dataframe để vẽ và check tín hiệu hiện tại
             df['BestSMA'] = df['Close'].rolling(window=best_ma_val).mean()
             
             curr = df.iloc[-1]
@@ -300,7 +297,6 @@ if submit_button or 'data' in st.session_state:
             curr_ma = curr['BestSMA']
             curr_rsi = curr['RSI']
             
-            # --- LOGIC KHUYẾN NGHỊ (Dựa trên Best MA) ---
             rec = "QUAN SÁT (WAIT)"
             reason = "Chưa có tín hiệu."
             bg_class = "bg-blue"
@@ -319,11 +315,9 @@ if submit_button or 'data' in st.session_state:
                 else:
                     reason = f"Giá đang nằm dưới đường MA{best_ma_val} (Xu hướng giảm), chờ RSI < 30 để mua."
 
-            # HIỂN THỊ THẺ KẾT QUẢ
             st.markdown(f"<div class='result-card {bg_class}'><div class='result-title'>{rec}</div><div class='result-reason'>💡 {reason}</div></div>", unsafe_allow_html=True)
             
-            # HIỂN THỊ BACKTEST BOX
-            bk_color = "#00E676" if best_roi_val > 0 else "#FF5252"
+            bk_color = "#00E676" if best_annual_roi_val > 0 else "#FF5252"
             sl_text = f"Cắt lỗ {stop_loss_input}%" if stop_loss_input > 0 else "KHÔNG SL"
             
             st.markdown(f"""
@@ -335,15 +329,14 @@ if submit_button or 'data' in st.session_state:
                     </div>
                     <div style='border-left:1px solid #546E7A; height:50px;'></div>
                     <div style='text-align:center;'>
-                        <div class='backtest-label'>LỢI NHUẬN BACKTEST</div>
-                        <div class='backtest-val' style='font-size:2rem; color:{bk_color}'>{best_roi_val:+.1f}%</div>
+                        <div class='backtest-label'>LỢI NHUẬN TB/NĂM</div>
+                        <div class='backtest-val' style='font-size:2rem; color:{bk_color}'>{best_annual_roi_val:+.1f}%</div>
                         <div style='font-size:0.8rem; color:#AAA;'>({sl_text})</div>
                     </div>
                 </div>
             </div>
             """, unsafe_allow_html=True)
             
-            # REPORT BOX
             report = f"""
             <div class='report-box'>
                 <div class='report-header'>📝 PHÂN TÍCH TỐI ƯU HÓA</div>
@@ -355,7 +348,6 @@ if submit_button or 'data' in st.session_state:
             st.markdown(report, unsafe_allow_html=True)
             st.markdown("<br>", unsafe_allow_html=True)
             
-            # INTRADAY CHART
             if not df_intra.empty:
                 st.divider()
                 latest_date = df_intra.index[0].strftime('%d/%m/%Y')
@@ -368,7 +360,6 @@ if submit_button or 'data' in st.session_state:
                 fig_intra.update_layout(height=350, xaxis_rangeslider_visible=False, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='#FAFAFA'), margin=dict(l=10, r=10, t=10, b=10), xaxis=dict(showgrid=True, gridwidth=1, gridcolor='#333', tickformat="%H:%M"), yaxis=dict(showgrid=True, gridwidth=1, gridcolor='#333', autorange=True))
                 st.plotly_chart(fig_intra, use_container_width=True, config={'scrollZoom': False, 'displayModeBar': False})
 
-            # METRICS
             col_m1, col_m2, col_m3, col_m4 = st.columns(4)
             with col_m1: render_metric_card("GIÁ ĐÓNG CỬA", f"{curr['Close']:,.0f}", curr['Close'] - prev['Close'])
             with col_m2: render_metric_card("RSI (14)", f"{curr['RSI']:.1f}", curr['RSI'] - prev['RSI'])
@@ -381,24 +372,24 @@ if submit_button or 'data' in st.session_state:
             st.markdown("<br>", unsafe_allow_html=True)
             st.divider()
             
-            # --- BIỂU ĐỒ KỸ THUẬT ---
+            # --- BIỂU ĐỒ KỸ THUẬT (Thêm 1 Tháng) ---
             st.markdown(f"### 📊 Biểu đồ Kỹ Thuật & Top MA")
-            time_tabs = st.radio("Khung thời gian:", ["3 Tháng", "6 Tháng", "1 Năm", "3 Năm", "Tất cả"], horizontal=True, index=2)
+            # Thêm mốc 1 Tháng
+            time_tabs = st.radio("Khung thời gian:", ["1 Tháng", "3 Tháng", "6 Tháng", "1 Năm", "3 Năm", "Tất cả"], horizontal=True, index=3)
             
             df_chart = df.copy()
-            if time_tabs == "3 Tháng": df_chart = df.iloc[-66:]
+            if time_tabs == "1 Tháng": df_chart = df.iloc[-22:] # 1 tháng ~ 22 phiên
+            elif time_tabs == "3 Tháng": df_chart = df.iloc[-66:]
             elif time_tabs == "6 Tháng": df_chart = df.iloc[-132:]
             elif time_tabs == "1 Năm": df_chart = df.iloc[-252:]
             elif time_tabs == "3 Năm": df_chart = df.iloc[-756:]
 
-            # Chart 1: Giá + Best MA
             fig1 = go.Figure()
             fig1.add_trace(go.Scatter(x=df_chart.index, y=df_chart['BestSMA'], line=dict(color='#FF914D', width=2), name=f"MA {best_ma_val} (Tối ưu)"))
             fig1.add_trace(go.Candlestick(x=df_chart.index, open=df_chart['Open'], high=df_chart['High'], low=df_chart['Low'], close=df_chart['Close'], name="Giá"))
             fig1.update_layout(height=500, xaxis_rangeslider_visible=False, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='#FAFAFA'), margin=dict(l=10, r=10, t=10, b=40), legend=dict(orientation="h", yanchor="top", y=-0.1, xanchor="center", x=0.5), xaxis=dict(showgrid=True, gridwidth=1, gridcolor='#333'), yaxis=dict(showgrid=True, gridwidth=1, gridcolor='#333', autorange=True))
             st.plotly_chart(fig1, use_container_width=True, config={'scrollZoom': False, 'displayModeBar': False})
 
-            # 2 Cột: RSI và Bảng Top MA
             col_c1, col_c2 = st.columns(2)
             with col_c1:
                 st.markdown("### 🚀 Chỉ số RSI")
@@ -412,15 +403,15 @@ if submit_button or 'data' in st.session_state:
             with col_c2:
                 st.markdown("### 🏆 Top 5 Đường MA Hiệu Quả")
                 st.dataframe(
-                    top_mas_df[['MA', 'ROI', 'Trades', 'Wins']].reset_index(drop=True),
+                    top_mas_df[['MA', 'Annual ROI', 'Trades', 'Wins']].reset_index(drop=True),
                     column_config={
                         "MA": "Đường MA",
-                        "ROI": st.column_config.NumberColumn("Lợi Nhuận (%)", format="%.2f %%"),
+                        "Annual ROI": st.column_config.NumberColumn("Lãi TB/Năm", format="%.2f %%"),
                         "Trades": "Số Lệnh",
                         "Wins": "Số Thắng"
                     },
                     use_container_width=True,
-                    height=350
+                    height=200 # Thu gọn chiều cao bảng vừa đủ 5 dòng
                 )
 
         except Exception as e:
