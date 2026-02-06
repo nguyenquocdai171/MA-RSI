@@ -5,6 +5,7 @@ import numpy as np
 import plotly.graph_objects as go
 import streamlit.components.v1 as components
 import random
+import textwrap
 from datetime import datetime, timedelta
 
 # --- CẤU HÌNH TRANG WEB ---
@@ -404,7 +405,9 @@ if submit_button or 'data' in st.session_state:
                 st.markdown("### 🏆 Top 5 Đường MA Hiệu Quả")
                 
                 # --- TẠO BẢNG HTML TÙY CHỈNH ---
-                top_5_html = """
+                # SỬ DỤNG TEXTWRAP ĐỂ TRÁNH LỖI INDENTATION (HIỆN CODE)
+                
+                table_style = """
                 <style>
                     .ma-table {
                         width: 100%;
@@ -414,6 +417,7 @@ if submit_button or 'data' in st.session_state:
                         border-radius: 10px;
                         overflow: hidden;
                         box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+                        margin-bottom: 20px;
                     }
                     .ma-table th {
                         background-color: #263238;
@@ -442,6 +446,9 @@ if submit_button or 'data' in st.session_state:
                         font-size: 1.2rem;
                     }
                 </style>
+                """
+                
+                table_header = """
                 <table class="ma-table">
                     <thead>
                         <tr>
@@ -454,11 +461,14 @@ if submit_button or 'data' in st.session_state:
                     <tbody>
                 """
                 
+                # Loại bỏ indentation thừa để tránh lỗi markdown code block
+                final_html = textwrap.dedent(table_style) + textwrap.dedent(table_header)
+                
                 for _, row in top_mas_df.iterrows():
                     roi_val = row['Annual ROI']
                     roi_color = "#00E676" if roi_val > 0 else "#FF5252"
                     
-                    top_5_html += f"""
+                    row_html = f"""
                         <tr>
                             <td class="highlight-val">MA {int(row['MA'])}</td>
                             <td style="color: {roi_color}; font-weight: bold;">{roi_val:.2f}%</td>
@@ -466,9 +476,10 @@ if submit_button or 'data' in st.session_state:
                             <td>{int(row['Wins'])}</td>
                         </tr>
                     """
+                    final_html += row_html
                 
-                top_5_html += "</tbody></table>"
-                st.markdown(top_5_html, unsafe_allow_html=True)
+                final_html += "</tbody></table>"
+                st.markdown(final_html, unsafe_allow_html=True)
 
         except Exception as e:
             st.error(f"Đã xảy ra lỗi hiển thị: {e}")
