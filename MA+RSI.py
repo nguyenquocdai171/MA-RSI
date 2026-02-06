@@ -4,123 +4,142 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 
-# --- CẤU HÌNH TRANG & CSS TÙY CHỈNH (Mô phỏng Tailwind UI cũ) ---
-st.set_page_config(page_title="Hệ Thống Đánh Giá Cổ Phiếu AI", layout="wide", page_icon="📈")
+# --- 1. CẤU HÌNH TRANG & CSS DARK MODE ---
+st.set_page_config(page_title="Stock Advisor Pro", layout="wide", page_icon="📈")
 
-# CSS để tạo giao diện Card (Thẻ) và làm đẹp giống bản HTML cũ
+# CSS Tùy chỉnh để giống hệt ảnh bạn gửi
 st.markdown("""
 <style>
-    /* Tổng thể nền */
+    /* Nền tổng thể màu tối */
     .stApp {
-        background-color: #f3f4f6;
+        background-color: #0e1117;
+        color: #e0e0e0;
     }
     
-    /* Style cho các Card (Hộp nội dung) */
-    .css-1r6slb0, .css-12oz5g7, .stMarkdown, .stDataFrame, .stPlotlyChart {
-        
-    }
-    
-    div[data-testid="stMetricValue"] {
-        font-size: 24px;
-    }
-    
-    /* Tạo khung trắng bo góc (Card) cho các container */
-    .custom-card {
-        background-color: white;
-        padding: 20px;
-        border-radius: 12px;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-        margin-bottom: 20px;
-    }
-    
-    /* Tiêu đề chính */
+    /* 1. Header Neon */
     .main-header {
-        color: #1e40af; /* Blue-800 */
+        font-family: 'Arial Black', sans-serif;
+        font-size: 3.5rem;
         text-align: center;
-        font-weight: 700;
-        font-size: 2.5rem;
-        margin-bottom: 0.5rem;
+        background: -webkit-linear-gradient(#00ff88, #00b8ff);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        text-shadow: 0 0 20px rgba(0, 255, 136, 0.3);
+        margin-bottom: -10px;
     }
-    
     .sub-header {
-        color: #4b5563; /* Gray-600 */
         text-align: center;
-        margin-bottom: 2rem;
-    }
-
-    /* Input to và đẹp hơn */
-    .stTextInput input {
-        font-size: 20px;
-        font-weight: bold;
-        text-transform: uppercase;
-        padding: 10px;
+        font-size: 1.2rem;
+        color: #a0a0a0;
+        margin-bottom: 30px;
+        font-weight: 300;
     }
     
-    /* Nút bấm lớn */
+    /* 2. Disclaimer Box */
+    .disclaimer-box {
+        background-color: #161b22;
+        border: 1px solid #30363d;
+        border-radius: 10px;
+        padding: 20px;
+        text-align: center;
+        margin-bottom: 30px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+    }
+    .warning-icon { font-size: 1.2rem; color: #eab308; }
+    .warning-title { color: #ef4444; font-weight: bold; text-transform: uppercase; letter-spacing: 1px;}
+    .warning-text { font-size: 0.9rem; color: #8b949e; margin-top: 5px; }
+    .warning-highlight { color: #e0e0e0; font-weight: bold; text-decoration: underline; }
+    
+    /* 3. Input Container */
+    .input-container {
+        background-color: #161b22;
+        padding: 30px;
+        border-radius: 15px;
+        border: 1px solid #30363d;
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+        max-width: 800px;
+        margin: 0 auto 40px auto;
+    }
+    
+    /* Tùy chỉnh Input Field */
+    .stTextInput input, .stNumberInput input {
+        background-color: #0d1117 !important;
+        color: #ffffff !important;
+        border: 1px solid #30363d !important;
+        border-radius: 8px !important;
+        padding: 15px !important;
+        font-size: 1.1rem !important;
+    }
+    
+    /* Tùy chỉnh Nút Bấm */
     .stButton button {
         width: 100%;
-        background-color: #2563eb;
+        background: linear-gradient(90deg, #1e3a8a 0%, #3b82f6 100%);
         color: white;
         font-weight: bold;
-        padding: 0.5rem 1rem;
-        border-radius: 0.5rem;
+        padding: 15px 20px;
+        border-radius: 8px;
+        border: none;
+        font-size: 1.1rem;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        transition: all 0.3s;
+        margin-top: 10px;
     }
     .stButton button:hover {
-        background-color: #1d4ed8;
-        color: white;
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(59, 130, 246, 0.4);
     }
     
-    /* Màu sắc khuyến nghị */
-    .rec-box-buy {
-        background-color: #ecfdf5;
-        border-left: 5px solid #10b981;
-        padding: 15px;
-        border-radius: 5px;
-        color: #065f46;
+    /* Metric Cards cho Dark Mode */
+    .metric-card {
+        background-color: #1f2937;
+        padding: 20px;
+        border-radius: 10px;
+        border-left: 5px solid #3b82f6;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+        color: white;
     }
-    .rec-box-sell {
-        background-color: #fef2f2;
-        border-left: 5px solid #ef4444;
-        padding: 15px;
-        border-radius: 5px;
-        color: #991b1b;
-    }
-    .rec-box-hold {
-        background-color: #f9fafb;
-        border-left: 5px solid #9ca3af;
-        padding: 15px;
-        border-radius: 5px;
-        color: #374151;
+    .metric-label { font-size: 0.9rem; color: #9ca3af; text-transform: uppercase; }
+    .metric-value { font-size: 1.8rem; font-weight: bold; margin-top: 5px; }
+    
+    /* Table Styling */
+    div[data-testid="stDataFrame"] {
+        background-color: #161b22;
+        border-radius: 10px;
+        padding: 10px;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# --- 1. LOGIC TÍNH TOÁN (Giữ nguyên từ bản trước) ---
+# --- 2. LOGIC TÍNH TOÁN (Cập nhật thêm Cắt lỗ) ---
 
 def calculate_rsi(data, window=14):
     delta = data.diff()
     gain = (delta.where(delta > 0, 0)).fillna(0)
     loss = (-delta.where(delta < 0, 0)).fillna(0)
-    
     avg_gain = gain.rolling(window=window, min_periods=1).mean()
     avg_loss = loss.rolling(window=window, min_periods=1).mean()
-    
     rs = avg_gain / avg_loss
     rsi = 100 - (100 / (1 + rs))
     return rsi
 
-def backtest_strategy(prices, ma_series, rsi_series):
+def backtest_strategy(prices, ma_series, rsi_series, stop_loss_pct):
     cash = 100_000_000 
     shares = 0
     initial_capital = cash
     trades = 0
     wins = 0
     
+    trade_history = []
+    
+    # Chuyển sang array để loop nhanh
     price_val = prices.values
     ma_val = ma_series.values
     rsi_val = rsi_series.values
+    dates = prices.index
     
-    trade_history = []
+    last_buy_price = 0
     
     for i in range(1, len(prices)):
         if np.isnan(ma_val[i]) or np.isnan(rsi_val[i]): continue
@@ -129,54 +148,81 @@ def backtest_strategy(prices, ma_series, rsi_series):
         current_ma = ma_val[i]
         current_rsi = rsi_val[i]
         
-        # MUA: Giá < MA và RSI < 30
-        if shares == 0 and current_price < current_ma and current_rsi < 30:
-            shares = cash / current_price
-            cash = 0
-            trade_history.append({'type': 'BUY', 'price': current_price})
+        # LOGIC MUA: Giá < MA và RSI < 30
+        if shares == 0:
+            if current_price < current_ma and current_rsi < 30:
+                shares = cash / current_price
+                last_buy_price = current_price
+                cash = 0
+                trade_history.append({'date': dates[i], 'type': 'BUY', 'price': current_price})
+        
+        # LOGIC BÁN
+        elif shares > 0:
+            # 1. Bán Cắt Lỗ (Nếu được kích hoạt)
+            is_stop_loss = False
+            if stop_loss_pct > 0:
+                stop_price = last_buy_price * (1 - stop_loss_pct/100)
+                if current_price <= stop_price:
+                    is_stop_loss = True
             
-        # BÁN: Giá > MA và RSI > 70
-        elif shares > 0 and current_price > current_ma and current_rsi > 70:
-            sell_value = shares * current_price
-            last_buy = trade_history[-1]['price']
-            if current_price > last_buy: wins += 1
-            cash = sell_value
-            shares = 0
-            trades += 1
-            trade_history.append({'type': 'SELL', 'price': current_price})
+            # 2. Bán Chốt Lời/Chiến thuật (Giá > MA và RSI > 70)
+            is_take_profit = (current_price > current_ma and current_rsi > 70)
+            
+            if is_stop_loss or is_take_profit:
+                sell_value = shares * current_price
+                if current_price > last_buy_price: wins += 1
+                
+                cash = sell_value
+                shares = 0
+                trades += 1
+                type_str = 'STOP LOSS' if is_stop_loss else 'TAKE PROFIT'
+                trade_history.append({'date': dates[i], 'type': type_str, 'price': current_price})
             
     final_value = cash + (shares * price_val[-1])
     roi = ((final_value - initial_capital) / initial_capital) * 100
     
-    return {'roi': roi, 'trades': trades, 'wins': wins}
+    return {'roi': roi, 'trades': trades, 'wins': wins, 'history': trade_history}
 
-# --- 2. GIAO DIỆN CHÍNH (LAYOUT MỚI) ---
+# --- 3. GIAO DIỆN CHÍNH ---
 
-# Header
-st.markdown('<h1 class="main-header"><i class="fas fa-chart-line"></i> Hệ Thống Đánh Giá Cổ Phiếu AI</h1>', unsafe_allow_html=True)
-st.markdown('<p class="sub-header">Tối ưu hóa chiến lược kết hợp MA & RSI (Backtest tự động với dữ liệu Yahoo Finance)</p>', unsafe_allow_html=True)
+# Header Section
+st.markdown('<h1 class="main-header">STOCK ADVISOR PRO</h1>', unsafe_allow_html=True)
+st.markdown('<p class="sub-header">Hệ thống Hỗ trợ Phân tích & Quản trị Rủi ro Đầu tư</p>', unsafe_allow_html=True)
 
-# Input Section (Giữa màn hình giống bản HTML)
-col_spacer1, col_input, col_btn, col_spacer2 = st.columns([1, 3, 1, 1])
+# Disclaimer Box
+st.markdown("""
+<div class="disclaimer-box">
+    <div class="warning-title"><span class="warning-icon">⚠️</span> TUYÊN BỐ MIỄN TRỪ TRÁCH NHIỆM</div>
+    <div class="warning-text">
+        Công cụ sử dụng thuật toán kỹ thuật (MA, RSI) để hỗ trợ tham khảo.<br>
+        <span class="warning-highlight">KHÔNG phải lời khuyên đầu tư tài chính chính thức.</span><br>
+        Người dùng tự chịu trách nhiệm. Dữ liệu Yahoo Finance.
+    </div>
+</div>
+""", unsafe_allow_html=True)
 
-with col_input:
-    ticker_input = st.text_input("", placeholder="Nhập mã (VD: HPG)", label_visibility="collapsed").upper().strip()
+# Input Section (Giống ảnh)
+st.markdown('<div class="input-container">', unsafe_allow_html=True)
+col_in1, col_in2 = st.columns([2, 1])
+with col_in1:
+    ticker_input = st.text_input("Mã cổ phiếu:", value="MBB", help="Ví dụ: VNM, HPG, FPT...").upper().strip()
+with col_in2:
+    stop_loss_input = st.number_input("Cắt lỗ % (0 = Tắt):", min_value=0.0, max_value=20.0, value=7.0, step=0.5)
 
-with col_btn:
-    st.write("") # Spacer để căn chỉnh nút bấm thẳng hàng với input
-    run_btn = st.button("Phân Tích Ngay")
+run_btn = st.button("🚀 PHÂN TÍCH & BACKTEST")
+st.markdown('</div>', unsafe_allow_html=True)
 
-# Xử lý khi bấm nút
+# --- 4. XỬ LÝ PHÂN TÍCH ---
 if run_btn and ticker_input:
-    # Xử lý mã CK Việt Nam
+    # Xử lý mã VN
     ticker_symbol = f"{ticker_input}.VN" if not ticker_input.endswith(".VN") else ticker_input
     
-    with st.spinner(f'Đang lấy dữ liệu và chạy thuật toán cho {ticker_input}...'):
+    with st.spinner(f'Đang tải dữ liệu và chạy mô phỏng cho {ticker_input}...'):
         try:
             # 1. Lấy dữ liệu
             df = yf.download(ticker_symbol, period="max", progress=False)
             
-            # Xử lý định dạng cột của yfinance mới
+            # Xử lý format cột yfinance mới
             if isinstance(df.columns, pd.MultiIndex):
                 df = df.xs('Close', level=0, axis=1)
                 df.columns = ['Close']
@@ -184,137 +230,144 @@ if run_btn and ticker_input:
                 df = df[['Close']]
             elif 'Adj Close' in df.columns:
                  df = df[['Adj Close']].rename(columns={'Adj Close': 'Close'})
-            
+
             if df.empty:
-                st.error(f"Không tìm thấy dữ liệu cho mã {ticker_input}. Vui lòng thử mã khác.")
+                st.error(f"Không tìm thấy dữ liệu cho mã {ticker_input}.")
                 st.stop()
 
-            # 2. Tính toán
+            # 2. Tính RSI
             df['RSI'] = calculate_rsi(df['Close'], 14)
+            
+            # 3. Backtest Loop
             results = []
             ma_range = range(5, 206, 10)
             
-            # Progress bar ẩn
-            progress_bar = st.empty()
-            
-            for idx, ma_period in enumerate(ma_range):
+            for ma_period in ma_range:
                 ma_series = df['Close'].rolling(window=ma_period).mean()
-                perf = backtest_strategy(df['Close'], ma_series, df['RSI'])
+                perf = backtest_strategy(df['Close'], ma_series, df['RSI'], stop_loss_input)
                 results.append({
                     'MA': ma_period,
-                    'Lợi Nhuận': perf['roi'],
-                    'Số Lệnh': perf['trades'],
-                    'Số Thắng': perf['wins']
+                    'ROI': perf['roi'],
+                    'Trades': perf['trades'],
+                    'Wins': perf['wins'],
+                    'History': perf['history'] # Lưu lịch sử để vẽ điểm mua bán sau này nếu cần
                 })
             
-            # 3. Kết quả tốt nhất
+            # 4. Tìm Best MA
             results_df = pd.DataFrame(results)
-            best_row = results_df.loc[results_df['Lợi Nhuận'].idxmax()]
+            best_row = results_df.loc[results_df['ROI'].idxmax()]
             best_ma = int(best_row['MA'])
             
-            # Chuẩn bị dữ liệu hiển thị
+            # Lấy data hiện tại
             df['BestMA'] = df['Close'].rolling(window=best_ma).mean()
             curr_price = df['Close'].iloc[-1]
             curr_rsi = df['RSI'].iloc[-1]
             curr_ma = df['BestMA'].iloc[-1]
             
             # Logic Khuyến Nghị
-            rec_html = ""
-            status_text = ""
-            reason_text = ""
+            rec_status = "QUAN SÁT"
+            rec_color = "#9ca3af" # Gray
+            rec_reason = "Chờ tín hiệu..."
             
             if curr_price < curr_ma and curr_rsi < 30:
-                status_text = "MUA NGAY"
-                reason_text = f"Giá ({curr_price:,.0f}) < MA{best_ma} và RSI vùng Quá Bán ({curr_rsi:.1f} < 30)."
-                rec_html = f"""
-                <div class="rec-box-buy">
-                    <h3 style="margin:0">KHUYẾN NGHỊ: {status_text}</h3>
-                    <p style="margin:5px 0 0 0">{reason_text}</p>
-                </div>
-                """
+                rec_status = "MUA MẠNH"
+                rec_color = "#00ff88" # Neon Green
+                rec_reason = f"Giá < MA{best_ma} & RSI Quá Bán ({curr_rsi:.1f})"
             elif curr_price > curr_ma and curr_rsi > 70:
-                status_text = "BÁN NGAY"
-                reason_text = f"Giá ({curr_price:,.0f}) > MA{best_ma} và RSI vùng Quá Mua ({curr_rsi:.1f} > 70)."
-                rec_html = f"""
-                <div class="rec-box-sell">
-                    <h3 style="margin:0">KHUYẾN NGHỊ: {status_text}</h3>
-                    <p style="margin:5px 0 0 0">{reason_text}</p>
-                </div>
-                """
+                rec_status = "BÁN CHỐT LỜI"
+                rec_color = "#ff4d4d" # Neon Red
+                rec_reason = f"Giá > MA{best_ma} & RSI Quá Mua ({curr_rsi:.1f})"
             else:
-                status_text = "NẮM GIỮ / QUAN SÁT"
                 if curr_price > curr_ma:
-                    reason_text = f"Giá đang trên MA{best_ma} (Xu hướng tăng), chờ RSI > 70 để chốt lời."
+                    rec_status = "NẮM GIỮ"
+                    rec_color = "#3b82f6" # Blue
+                    rec_reason = f"Xu hướng tăng trên MA{best_ma}"
                 else:
-                    reason_text = f"Giá đang dưới MA{best_ma} (Xu hướng giảm), chờ RSI < 30 để bắt đáy."
-                rec_html = f"""
-                <div class="rec-box-hold">
-                    <h3 style="margin:0">KHUYẾN NGHỊ: {status_text}</h3>
-                    <p style="margin:5px 0 0 0">{reason_text}</p>
+                    rec_status = "CHỜ MUA"
+                    rec_color = "#eab308" # Yellow
+                    rec_reason = f"Xu hướng giảm dưới MA{best_ma}"
+
+            # --- HIỂN THỊ KẾT QUẢ (DARK MODE UI) ---
+            st.markdown("---")
+            
+            # 1. Kết quả tổng quan
+            c1, c2, c3, c4 = st.columns(4)
+            with c1:
+                st.markdown(f"""
+                <div class="metric-card" style="border-left-color: {rec_color};">
+                    <div class="metric-label">KHUYẾN NGHỊ</div>
+                    <div class="metric-value" style="color: {rec_color}; font-size: 1.5rem;">{rec_status}</div>
+                    <div style="font-size: 0.8rem; color: #888;">{rec_reason}</div>
                 </div>
-                """
-
-            # --- HIỂN THỊ KẾT QUẢ ---
+                """, unsafe_allow_html=True)
+            with c2:
+                st.markdown(f"""
+                <div class="metric-card" style="border-left-color: #3b82f6;">
+                    <div class="metric-label">GIÁ HIỆN TẠI</div>
+                    <div class="metric-value">{curr_price:,.0f}</div>
+                    <div style="font-size: 0.8rem;">VND</div>
+                </div>
+                """, unsafe_allow_html=True)
+            with c3:
+                color_rsi = "#ff4d4d" if curr_rsi > 70 else ("#00ff88" if curr_rsi < 30 else "#e0e0e0")
+                st.markdown(f"""
+                <div class="metric-card" style="border-left-color: {color_rsi};">
+                    <div class="metric-label">RSI (14)</div>
+                    <div class="metric-value" style="color: {color_rsi}">{curr_rsi:.1f}</div>
+                    <div style="font-size: 0.8rem;">Sức mạnh giá</div>
+                </div>
+                """, unsafe_allow_html=True)
+            with c4:
+                roi_color = "#00ff88" if best_row['ROI'] > 0 else "#ff4d4d"
+                st.markdown(f"""
+                <div class="metric-card" style="border-left-color: #eab308;">
+                    <div class="metric-label">CHIẾN LƯỢC TỐI ƯU</div>
+                    <div class="metric-value">MA {best_ma}</div>
+                    <div style="font-size: 0.8rem; color: {roi_color}">Backtest ROI: {best_row['ROI']:.1f}%</div>
+                </div>
+                """, unsafe_allow_html=True)
             
-            # 1. Hàng Card thông tin (4 cột)
-            st.markdown("###") # Spacer
-            col1, col2, col3, col4 = st.columns(4)
+            # 2. Biểu đồ (Dark Theme Plotly)
+            st.markdown("### 📉 Biểu Đồ Phân Tích")
+            plot_df = df.tail(250).copy()
             
-            with col1:
-                st.markdown('<div class="custom-card" style="border-left: 5px solid #3b82f6;">', unsafe_allow_html=True)
-                st.metric("Giá Hiện Tại", f"{curr_price:,.0f} đ")
-                st.markdown('</div>', unsafe_allow_html=True)
-                
-            with col2:
-                st.markdown('<div class="custom-card" style="border-left: 5px solid #a855f7;">', unsafe_allow_html=True)
-                status_rsi = "Quá Mua" if curr_rsi > 70 else ("Quá Bán" if curr_rsi < 30 else "Trung Tính")
-                st.metric("RSI (14)", f"{curr_rsi:.2f}", status_rsi)
-                st.markdown('</div>', unsafe_allow_html=True)
-                
-            with col3:
-                st.markdown('<div class="custom-card" style="border-left: 5px solid #eab308;">', unsafe_allow_html=True)
-                st.metric("MA Tối Ưu", f"MA {best_ma}", f"Lãi: {best_row['Lợi Nhuận']:.1f}%")
-                st.markdown('</div>', unsafe_allow_html=True)
-                
-            with col4:
-                # Custom HTML card cho Recommendation để nổi bật
-                st.markdown(rec_html, unsafe_allow_html=True)
-
-            # 2. Biểu đồ
-            with st.container():
-                st.markdown('<div class="custom-card">', unsafe_allow_html=True)
-                plot_df = df.tail(200).copy()
-                fig = go.Figure()
-                fig.add_trace(go.Scatter(x=plot_df.index, y=plot_df['Close'], mode='lines', name='Giá', line=dict(color='#2563eb', width=2)))
-                fig.add_trace(go.Scatter(x=plot_df.index, y=plot_df['BestMA'], mode='lines', name=f'MA {best_ma}', line=dict(color='#fbbf24', width=2, dash='dash')))
-                fig.update_layout(title="Biểu Đồ Giá & Đường MA Tối Ưu (200 phiên gần nhất)", height=450, xaxis_title="", yaxis_title="", template="plotly_white", margin=dict(l=20, r=20, t=40, b=20))
-                st.plotly_chart(fig, use_container_width=True)
-                st.markdown('</div>', unsafe_allow_html=True)
-
-            # 3. Hai cột: Bảng tối ưu & Logic
-            c_left, c_right = st.columns([1, 1])
+            fig = go.Figure()
+            # Giá
+            fig.add_trace(go.Scatter(x=plot_df.index, y=plot_df['Close'], mode='lines', name='Giá Đóng Cửa', line=dict(color='#00b8ff', width=2)))
+            # Best MA
+            fig.add_trace(go.Scatter(x=plot_df.index, y=plot_df['BestMA'], mode='lines', name=f'MA {best_ma}', line=dict(color='#eab308', width=1, dash='dash')))
             
-            with c_left:
-                st.markdown('<div class="custom-card">', unsafe_allow_html=True)
-                st.markdown("##### 📊 Top 5 Đường MA Hiệu Quả Nhất")
-                top_5 = results_df.sort_values(by='Lợi Nhuận', ascending=False).head(5)
-                st.dataframe(top_5, hide_index=True, use_container_width=True, column_config={"Lợi Nhuận": st.column_config.NumberColumn(format="%.2f%%")})
-                st.markdown('</div>', unsafe_allow_html=True)
-                
-            with c_right:
-                st.markdown('<div class="custom-card">', unsafe_allow_html=True)
-                st.markdown("##### 💡 Logic Thuật Toán")
-                st.markdown("""
-                - **Dữ liệu:** Lấy trực tiếp từ Yahoo Finance (lịch sử tối đa).
-                - **Quét MA:** Chạy thử nghiệm các đường MA từ 5 đến 205 (bước nhảy 10).
-                - **Mua:** Khi Giá < MA và RSI < 30.
-                - **Bán:** Khi Giá > MA và RSI > 70.
-                - **Kết luận:** Hệ thống chọn đường MA có *Lợi nhuận cao nhất* trong quá khứ để đưa ra khuyến nghị hiện tại.
-                """)
-                st.markdown('</div>', unsafe_allow_html=True)
+            # Thêm điểm mua bán (Nếu muốn chi tiết hơn)
+            # (Phần này nâng cao, có thể thêm sau)
+
+            fig.update_layout(
+                template="plotly_dark",
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                height=500,
+                margin=dict(l=20, r=20, t=30, b=20),
+                legend=dict(orientation="h", y=1, x=0, bgcolor='rgba(0,0,0,0)'),
+                xaxis=dict(showgrid=False),
+                yaxis=dict(showgrid=True, gridcolor='#333')
+            )
+            st.plotly_chart(fig, use_container_width=True)
+            
+            # 3. Bảng Top Hiệu Quả
+            st.markdown("### 🏆 Top 5 Đường MA Hiệu Quả Nhất")
+            top_5 = results_df.sort_values(by='ROI', ascending=False).head(5)
+            st.dataframe(
+                top_5[['MA', 'ROI', 'Trades', 'Wins']],
+                use_container_width=True,
+                column_config={
+                    "ROI": st.column_config.NumberColumn("Lợi Nhuận (%)", format="%.2f %%"),
+                    "Trades": "Tổng Lệnh",
+                    "Wins": "Lệnh Thắng"
+                },
+                hide_index=True
+            )
 
         except Exception as e:
             st.error(f"Lỗi: {e}")
 
 # Footer
-st.markdown("<div style='text-align: center; color: #9ca3af; font-size: 0.8rem; margin-top: 2rem;'>AI Stock Analyzer - Powered by Streamlit & Yahoo Finance</div>", unsafe_allow_html=True)
+st.markdown("<div style='text-align: center; color: #555; margin-top: 50px;'>© 2024 Stock Advisor Pro. Powered by Streamlit</div>", unsafe_allow_html=True)
