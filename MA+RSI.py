@@ -9,7 +9,7 @@ import textwrap
 from datetime import datetime, timedelta
 
 # --- CẤU HÌNH TRANG WEB ---
-st.set_page_config(layout="wide", page_title="Stock Advisor PRO", page_icon="📈")
+st.set_page_config(layout="wide", page_title="Stock Advisor", page_icon="📈")
 
 # --- CSS TÙY CHỈNH ---
 st.markdown("""
@@ -209,7 +209,7 @@ def render_metric_card(label, value, delta=None, color=None):
     st.markdown(card_html, unsafe_allow_html=True)
 
 # --- MAIN APP ---
-st.markdown("<h1 class='main-title'>STOCK ADVISOR PRO</h1>", unsafe_allow_html=True)
+st.markdown("<h1 class='main-title'>STOCK ADVISOR</h1>", unsafe_allow_html=True)
 st.markdown("<p class='sub-title'>Hệ thống Tối ưu hóa Chiến thuật MA & RSI</p>", unsafe_allow_html=True)
 
 st.markdown("""
