@@ -5,6 +5,7 @@ import numpy as np
 import plotly.graph_objects as go
 import streamlit.components.v1 as components
 import random
+import textwrap
 from datetime import datetime, timedelta
 
 # --- CẤU HÌNH TRANG WEB ---
@@ -220,38 +221,47 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
+# === PHẦN NHẬP LIỆU (ĐÃ BỎ FORM ĐỂ TĂNG TƯƠNG TÁC) ===
 col1, col2, col3 = st.columns([1, 2, 1]) 
 with col2:
-    with st.form(key='search_form'):
-        c_ticker, c_sl = st.columns([2, 1])
-        with c_ticker:
-            ticker_input = st.text_input("Mã cổ phiếu:", value="", placeholder="VD: HPG, VNM...").upper()
-        with c_sl:
-            stop_loss_input = st.number_input("Cắt lỗ % (0 = Tắt):", min_value=0.0, max_value=20.0, value=7.0, step=0.5)
-        submit_button = st.form_submit_button(label='🚀 PHÂN TÍCH & TỐI ƯU HÓA', use_container_width=True)
+    # 2 Cột Input
+    c_ticker, c_sl = st.columns([2, 1])
+    with c_ticker:
+        # Nếu chưa có mã, mặc định trống. 
+        # Sử dụng on_change để tránh reload liên tục không cần thiết, nhưng ở đây dùng button để confirm là tốt nhất
+        ticker_input_val = st.text_input("Mã cổ phiếu:", value=st.session_state.get('last_input_ticker', ''), placeholder="VD: HPG, VNM...").upper()
+        
+    with c_sl:
+        # Stoploss: Thay đổi là ăn ngay (Reactive)
+        stop_loss_input = st.number_input("Cắt lỗ % (0 = Tắt):", min_value=0.0, max_value=20.0, value=7.0, step=0.5)
 
-# Logic xử lý State và Cache
-if submit_button:
+    # Nút bấm nằm dưới
+    run_btn = st.button('🚀 PHÂN TÍCH & TỐI ƯU HÓA', use_container_width=True)
+
+# === LOGIC XỬ LÝ (REACTIVE) ===
+
+# 1. Xử lý sự kiện bấm nút (Confirm mã mới)
+if run_btn:
+    st.session_state['confirmed_ticker'] = ticker_input_val.strip()
+    st.session_state['last_input_ticker'] = ticker_input_val.strip() # Giữ giá trị input
     st.session_state['run_analysis'] = True
-    st.session_state['ticker'] = ticker_input.strip()
-    st.session_state['sl_pct'] = stop_loss_input
 
-# Nếu đã bấm nút hoặc đã có dữ liệu trong session
-if st.session_state.get('run_analysis', False) and st.session_state.get('ticker'):
+# 2. Xử lý chính
+if st.session_state.get('run_analysis', False) and st.session_state.get('confirmed_ticker'):
     
     # Hack ẩn bàn phím mobile
     js_hack = f"""<script>function forceBlur(){{const activeElement=window.parent.document.activeElement;if(activeElement){{activeElement.blur();}}window.parent.document.body.focus();}}forceBlur();setTimeout(forceBlur,200);</script><div style="display:none;">{random.random()}</div>"""
     components.html(js_hack, height=0)
 
-    ticker = st.session_state['ticker']
-    current_sl = st.session_state.get('sl_pct', 7.0)
+    ticker = st.session_state['confirmed_ticker']
+    current_sl = stop_loss_input # Luôn lấy giá trị hiện tại từ widget
 
     if not ticker:
         st.warning("⚠️ Vui lòng nhập mã cổ phiếu!")
     else:
         symbol = ticker if ".VN" in ticker else f"{ticker}.VN"
         
-        # --- BƯỚC 1: TẢI DỮ LIỆU (Chỉ chạy khi đổi mã Symbol) ---
+        # --- BƯỚC 1: TẢI DỮ LIỆU (Chỉ tải lại nếu Mã cổ phiếu thay đổi) ---
         if 'data' not in st.session_state or st.session_state.get('current_symbol') != symbol:
             with st.spinner(f'Đang tải dữ liệu {ticker}...'):
                 try:
@@ -263,11 +273,11 @@ if st.session_state.get('run_analysis', False) and st.session_state.get('ticker'
                     if isinstance(df_full.columns, pd.MultiIndex): df_full.columns = df_full.columns.get_level_values(0)
                     df_full['RSI'] = calculate_rsi(df_full['Close'], 14)
                     
-                    # Lưu dữ liệu thô vào session
+                    # Lưu cache
                     st.session_state['data'] = df_full
                     st.session_state['current_symbol'] = symbol
                     
-                    # Tải Intraday
+                    # Intraday
                     df_intra = yf.download(symbol, period="1d", interval="5m", progress=False)
                     if isinstance(df_intra.columns, pd.MultiIndex): df_intra.columns = df_intra.columns.get_level_values(0)
                     if not df_intra.empty:
@@ -281,20 +291,21 @@ if st.session_state.get('run_analysis', False) and st.session_state.get('ticker'
                     st.error(f"Lỗi tải dữ liệu: {e}")
                     st.stop()
         
-        # --- BƯỚC 2: TÍNH TOÁN CHIẾN THUẬT (Chạy mỗi khi bấm nút để cập nhật SL) ---
-        # Luôn chạy tối ưu hóa lại dựa trên stoploss hiện tại
+        # --- BƯỚC 2: TÍNH TOÁN CHIẾN THUẬT (Luôn chạy lại khi SL thay đổi) ---
+        # Logic: Vì stop_loss_input nằm ngoài form, thay đổi giá trị sẽ làm script rerun.
+        # Script chạy đến đây sẽ dùng stop_loss_input MỚI NHẤT để tính toán lại trên data CŨ (trong cache).
         if 'data' in st.session_state:
-            with st.spinner(f'Đang tối ưu hóa chiến thuật (Stoploss: {current_sl}%)...'):
-                df_calc = st.session_state['data']
-                best_res, results_df = optimize_ma_strategy(df_calc, current_sl)
-                
-                if best_res is not None:
-                    st.session_state['best_ma'] = int(best_res['MA'])
-                    st.session_state['best_annual_roi'] = best_res['Annual ROI']
-                    st.session_state['top_mas'] = results_df.sort_values(by='Annual ROI', ascending=False).head(5)
-                else:
-                    st.error("Không đủ dữ liệu tính toán.")
-                    st.stop()
+            # Không dùng spinner ở đây để cảm giác mượt mà (instant) khi chỉnh số
+            df_calc = st.session_state['data']
+            best_res, results_df = optimize_ma_strategy(df_calc, current_sl)
+            
+            if best_res is not None:
+                st.session_state['best_ma'] = int(best_res['MA'])
+                st.session_state['best_annual_roi'] = best_res['Annual ROI']
+                st.session_state['top_mas'] = results_df.sort_values(by='Annual ROI', ascending=False).head(5)
+            else:
+                st.error("Không đủ dữ liệu tính toán.")
+                st.stop()
 
         # --- BƯỚC 3: HIỂN THỊ GIAO DIỆN ---
         try:
@@ -304,7 +315,6 @@ if st.session_state.get('run_analysis', False) and st.session_state.get('ticker'
             best_annual_roi_val = st.session_state['best_annual_roi']
             top_mas_df = st.session_state['top_mas']
             
-            # Tính đường Best MA cho hiển thị
             df['BestSMA'] = df['Close'].rolling(window=best_ma_val).mean()
             
             curr = df.iloc[-1]
@@ -313,7 +323,6 @@ if st.session_state.get('run_analysis', False) and st.session_state.get('ticker'
             curr_ma = curr['BestSMA']
             curr_rsi = curr['RSI']
             
-            # Logic Recommendation
             rec = "QUAN SÁT (WAIT)"
             reason = "Chưa có tín hiệu."
             bg_class = "bg-blue"
@@ -419,7 +428,6 @@ if st.session_state.get('run_analysis', False) and st.session_state.get('ticker'
             with col_c2:
                 st.markdown("### 🏆 Top 5 Đường MA Hiệu Quả")
                 
-                # Sửa lỗi hiển thị HTML bảng bằng cách ép chuỗi thành 1 dòng (strip newline)
                 table_html = """<table class="ma-table"><thead><tr><th>Đường MA</th><th>Lãi TB/Năm</th><th>Số Lệnh</th><th>Số Thắng</th></tr></thead><tbody>"""
                 
                 for _, row in top_mas_df.iterrows():
