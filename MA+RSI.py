@@ -402,17 +402,73 @@ if submit_button or 'data' in st.session_state:
 
             with col_c2:
                 st.markdown("### 🏆 Top 5 Đường MA Hiệu Quả")
-                st.dataframe(
-                    top_mas_df[['MA', 'Annual ROI', 'Trades', 'Wins']].reset_index(drop=True),
-                    column_config={
-                        "MA": "Đường MA",
-                        "Annual ROI": st.column_config.NumberColumn("Lãi TB/Năm", format="%.2f %%"),
-                        "Trades": "Số Lệnh",
-                        "Wins": "Số Thắng"
-                    },
-                    use_container_width=True,
-                    height=200 # Thu gọn chiều cao bảng vừa đủ 5 dòng
-                )
+                
+                # --- TẠO BẢNG HTML TÙY CHỈNH ---
+                top_5_html = """
+                <style>
+                    .ma-table {
+                        width: 100%;
+                        border-collapse: collapse;
+                        font-size: 1.1rem; /* Phóng to chữ */
+                        background-color: #1E1E1E;
+                        border-radius: 10px;
+                        overflow: hidden;
+                        box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+                    }
+                    .ma-table th {
+                        background-color: #263238;
+                        color: #00E676;
+                        padding: 15px;
+                        text-align: center; /* Căn giữa tiêu đề */
+                        font-weight: bold;
+                        border-bottom: 2px solid #444;
+                        text-transform: uppercase;
+                        font-size: 0.9rem;
+                    }
+                    .ma-table td {
+                        padding: 15px;
+                        text-align: center; /* Căn giữa nội dung */
+                        border-bottom: 1px solid #333;
+                        color: #E0E0E0;
+                    }
+                    .ma-table tr:last-child td {
+                        border-bottom: none;
+                    }
+                    .ma-table tr:hover {
+                        background-color: rgba(255, 255, 255, 0.05);
+                    }
+                    .highlight-val {
+                        font-weight: bold;
+                        font-size: 1.2rem;
+                    }
+                </style>
+                <table class="ma-table">
+                    <thead>
+                        <tr>
+                            <th>Đường MA</th>
+                            <th>Lãi TB/Năm</th>
+                            <th>Số Lệnh</th>
+                            <th>Số Thắng</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                """
+                
+                for _, row in top_mas_df.iterrows():
+                    roi_val = row['Annual ROI']
+                    roi_color = "#00E676" if roi_val > 0 else "#FF5252"
+                    
+                    top_5_html += f"""
+                        <tr>
+                            <td class="highlight-val">MA {int(row['MA'])}</td>
+                            <td style="color: {roi_color}; font-weight: bold;">{roi_val:.2f}%</td>
+                            <td>{int(row['Trades'])}</td>
+                            <td>{int(row['Wins'])}</td>
+                        </tr>
+                    """
+                
+                top_5_html += "</tbody></table>"
+                st.markdown(top_5_html, unsafe_allow_html=True)
 
         except Exception as e:
             st.error(f"Đã xảy ra lỗi hiển thị: {e}")
