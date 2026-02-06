@@ -5,7 +5,6 @@ import numpy as np
 import plotly.graph_objects as go
 import streamlit.components.v1 as components
 import random
-import textwrap
 from datetime import datetime, timedelta
 
 # --- CẤU HÌNH TRANG WEB ---
@@ -80,6 +79,14 @@ st.markdown("""
     }
     .backtest-label { color: #CFD8DC; font-size: 1rem; margin-bottom: 5px; }
     .backtest-val { color: #00E676; font-size: 2.5rem; font-weight: 900; }
+    
+    /* TABLE CUSTOM STYLE */
+    .ma-table { width: 100%; border-collapse: collapse; font-size: 1.1rem; background-color: #1E1E1E; border-radius: 10px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.3); margin-bottom: 20px; }
+    .ma-table th { background-color: #263238; color: #00E676; padding: 15px; text-align: center; font-weight: bold; border-bottom: 2px solid #444; text-transform: uppercase; font-size: 0.9rem; }
+    .ma-table td { padding: 15px; text-align: center; border-bottom: 1px solid #333; color: #E0E0E0; }
+    .ma-table tr:last-child td { border-bottom: none; }
+    .ma-table tr:hover { background-color: rgba(255, 255, 255, 0.05); }
+    .highlight-val { font-weight: bold; font-size: 1.2rem; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -94,7 +101,7 @@ def calculate_rsi(data, window=14):
     rsi = 100 - (100 / (1 + rs))
     return rsi
 
-# --- HÀM BACKTEST CHO TỪNG ĐƯỜNG MA (Cập nhật tính lãi TB năm) ---
+# --- HÀM BACKTEST CHO TỪNG ĐƯỜNG MA ---
 def run_backtest_for_ma(prices_series, ma_series, rsi_series, stop_loss_pct):
     cash = 100_000_000
     initial_capital = cash
@@ -102,7 +109,6 @@ def run_backtest_for_ma(prices_series, ma_series, rsi_series, stop_loss_pct):
     trade_count = 0
     wins = 0
     
-    # Chuyển sang numpy array để loop nhanh
     p_arr = prices_series.values
     ma_arr = ma_series.values
     rsi_arr = rsi_series.values
@@ -110,7 +116,6 @@ def run_backtest_for_ma(prices_series, ma_series, rsi_series, stop_loss_pct):
     last_buy_price = 0
     use_sl = stop_loss_pct > 0
     
-    # Bắt đầu từ index 205
     start_idx = 205 
     if len(p_arr) <= start_idx: return -999, -999, 0, 0
 
@@ -137,7 +142,7 @@ def run_backtest_for_ma(prices_series, ma_series, rsi_series, stop_loss_pct):
                 if pct_loss <= -stop_loss_pct:
                     is_sell = True
             
-            # Chốt lời
+            # Chốt lời theo chiến thuật
             if not is_sell:
                 if price > ma and rsi > 70:
                     is_sell = True
@@ -152,12 +157,10 @@ def run_backtest_for_ma(prices_series, ma_series, rsi_series, stop_loss_pct):
     final_val = cash + (shares * p_arr[-1])
     total_roi = ((final_val - initial_capital) / initial_capital) * 100
     
-    # Tính lợi nhuận trung bình năm
     start_date = prices_series.index[start_idx]
     end_date = prices_series.index[-1]
     days = (end_date - start_date).days
     years = days / 365.25
-    
     avg_annual_roi = total_roi / years if years > 0 else 0
     
     return total_roi, avg_annual_roi, trade_count, wins
@@ -171,7 +174,6 @@ def optimize_ma_strategy(df, stop_loss_pct):
     
     for ma_period in ma_ranges:
         ma_series = prices.rolling(window=ma_period).mean()
-        # Truyền cả series 'prices' để lấy index ngày tháng
         total_roi, annual_roi, trades, wins = run_backtest_for_ma(prices, ma_series, rsi, stop_loss_pct)
         
         results.append({
@@ -185,7 +187,6 @@ def optimize_ma_strategy(df, stop_loss_pct):
     results_df = pd.DataFrame(results)
     if results_df.empty: return None, None
     
-    # Sắp xếp theo Lợi nhuận Năm cao nhất
     best_res = results_df.loc[results_df['Annual ROI'].idxmax()]
     return best_res, results_df
 
@@ -229,25 +230,30 @@ with col2:
             stop_loss_input = st.number_input("Cắt lỗ % (0 = Tắt):", min_value=0.0, max_value=20.0, value=7.0, step=0.5)
         submit_button = st.form_submit_button(label='🚀 PHÂN TÍCH & TỐI ƯU HÓA', use_container_width=True)
 
-if submit_button or 'data' in st.session_state:
+# Logic xử lý State và Cache
+if submit_button:
+    st.session_state['run_analysis'] = True
+    st.session_state['ticker'] = ticker_input.strip()
+    st.session_state['sl_pct'] = stop_loss_input
+
+# Nếu đã bấm nút hoặc đã có dữ liệu trong session
+if st.session_state.get('run_analysis', False) and st.session_state.get('ticker'):
+    
+    # Hack ẩn bàn phím mobile
     js_hack = f"""<script>function forceBlur(){{const activeElement=window.parent.document.activeElement;if(activeElement){{activeElement.blur();}}window.parent.document.body.focus();}}forceBlur();setTimeout(forceBlur,200);</script><div style="display:none;">{random.random()}</div>"""
     components.html(js_hack, height=0)
 
-    if submit_button:
-        ticker = ticker_input.strip()
-        st.session_state['ticker'] = ticker
-        st.session_state['sl_pct'] = stop_loss_input
-    elif 'ticker' in st.session_state:
-        ticker = st.session_state['ticker']
-        stop_loss_input = st.session_state.get('sl_pct', 7.0)
+    ticker = st.session_state['ticker']
+    current_sl = st.session_state.get('sl_pct', 7.0)
 
     if not ticker:
         st.warning("⚠️ Vui lòng nhập mã cổ phiếu!")
     else:
         symbol = ticker if ".VN" in ticker else f"{ticker}.VN"
         
+        # --- BƯỚC 1: TẢI DỮ LIỆU (Chỉ chạy khi đổi mã Symbol) ---
         if 'data' not in st.session_state or st.session_state.get('current_symbol') != symbol:
-            with st.spinner(f'Đang tải dữ liệu {ticker} và chạy tối ưu hóa...'):
+            with st.spinner(f'Đang tải dữ liệu {ticker}...'):
                 try:
                     df_full = yf.download(symbol, period="max", interval="1d", progress=False)
                     if df_full.empty:
@@ -257,19 +263,11 @@ if submit_button or 'data' in st.session_state:
                     if isinstance(df_full.columns, pd.MultiIndex): df_full.columns = df_full.columns.get_level_values(0)
                     df_full['RSI'] = calculate_rsi(df_full['Close'], 14)
                     
-                    # Tối ưu hóa
-                    best_res, results_df = optimize_ma_strategy(df_full, stop_loss_input)
-                    
-                    if best_res is None:
-                        st.error("Không đủ dữ liệu để tính toán.")
-                        st.stop()
-                        
+                    # Lưu dữ liệu thô vào session
                     st.session_state['data'] = df_full
-                    st.session_state['best_ma'] = int(best_res['MA'])
-                    st.session_state['best_annual_roi'] = best_res['Annual ROI'] # Lưu Annual ROI
-                    st.session_state['top_mas'] = results_df.sort_values(by='Annual ROI', ascending=False).head(5)
                     st.session_state['current_symbol'] = symbol
                     
+                    # Tải Intraday
                     df_intra = yf.download(symbol, period="1d", interval="5m", progress=False)
                     if isinstance(df_intra.columns, pd.MultiIndex): df_intra.columns = df_intra.columns.get_level_values(0)
                     if not df_intra.empty:
@@ -278,18 +276,35 @@ if submit_button or 'data' in st.session_state:
                         else:
                             df_intra.index = df_intra.index.tz_convert('Asia/Ho_Chi_Minh')
                     st.session_state['data_intra'] = df_intra
-
+                    
                 except Exception as e:
                     st.error(f"Lỗi tải dữ liệu: {e}")
                     st.stop()
+        
+        # --- BƯỚC 2: TÍNH TOÁN CHIẾN THUẬT (Chạy mỗi khi bấm nút để cập nhật SL) ---
+        # Luôn chạy tối ưu hóa lại dựa trên stoploss hiện tại
+        if 'data' in st.session_state:
+            with st.spinner(f'Đang tối ưu hóa chiến thuật (Stoploss: {current_sl}%)...'):
+                df_calc = st.session_state['data']
+                best_res, results_df = optimize_ma_strategy(df_calc, current_sl)
+                
+                if best_res is not None:
+                    st.session_state['best_ma'] = int(best_res['MA'])
+                    st.session_state['best_annual_roi'] = best_res['Annual ROI']
+                    st.session_state['top_mas'] = results_df.sort_values(by='Annual ROI', ascending=False).head(5)
+                else:
+                    st.error("Không đủ dữ liệu tính toán.")
+                    st.stop()
 
+        # --- BƯỚC 3: HIỂN THỊ GIAO DIỆN ---
         try:
             df = st.session_state['data']
-            df_intra = st.session_state['data_intra']
+            df_intra = st.session_state.get('data_intra', pd.DataFrame())
             best_ma_val = st.session_state['best_ma']
             best_annual_roi_val = st.session_state['best_annual_roi']
             top_mas_df = st.session_state['top_mas']
             
+            # Tính đường Best MA cho hiển thị
             df['BestSMA'] = df['Close'].rolling(window=best_ma_val).mean()
             
             curr = df.iloc[-1]
@@ -298,6 +313,7 @@ if submit_button or 'data' in st.session_state:
             curr_ma = curr['BestSMA']
             curr_rsi = curr['RSI']
             
+            # Logic Recommendation
             rec = "QUAN SÁT (WAIT)"
             reason = "Chưa có tín hiệu."
             bg_class = "bg-blue"
@@ -319,7 +335,7 @@ if submit_button or 'data' in st.session_state:
             st.markdown(f"<div class='result-card {bg_class}'><div class='result-title'>{rec}</div><div class='result-reason'>💡 {reason}</div></div>", unsafe_allow_html=True)
             
             bk_color = "#00E676" if best_annual_roi_val > 0 else "#FF5252"
-            sl_text = f"Cắt lỗ {stop_loss_input}%" if stop_loss_input > 0 else "KHÔNG SL"
+            sl_text = f"Cắt lỗ {current_sl}%" if current_sl > 0 else "KHÔNG SL"
             
             st.markdown(f"""
             <div class='backtest-box'>
@@ -373,13 +389,12 @@ if submit_button or 'data' in st.session_state:
             st.markdown("<br>", unsafe_allow_html=True)
             st.divider()
             
-            # --- BIỂU ĐỒ KỸ THUẬT (Thêm 1 Tháng) ---
+            # --- BIỂU ĐỒ KỸ THUẬT ---
             st.markdown(f"### 📊 Biểu đồ Kỹ Thuật & Top MA")
-            # Thêm mốc 1 Tháng
             time_tabs = st.radio("Khung thời gian:", ["1 Tháng", "3 Tháng", "6 Tháng", "1 Năm", "3 Năm", "Tất cả"], horizontal=True, index=3)
             
             df_chart = df.copy()
-            if time_tabs == "1 Tháng": df_chart = df.iloc[-22:] # 1 tháng ~ 22 phiên
+            if time_tabs == "1 Tháng": df_chart = df.iloc[-22:]
             elif time_tabs == "3 Tháng": df_chart = df.iloc[-66:]
             elif time_tabs == "6 Tháng": df_chart = df.iloc[-132:]
             elif time_tabs == "1 Năm": df_chart = df.iloc[-252:]
@@ -404,82 +419,18 @@ if submit_button or 'data' in st.session_state:
             with col_c2:
                 st.markdown("### 🏆 Top 5 Đường MA Hiệu Quả")
                 
-                # --- TẠO BẢNG HTML TÙY CHỈNH ---
-                # SỬ DỤNG TEXTWRAP ĐỂ TRÁNH LỖI INDENTATION (HIỆN CODE)
-                
-                table_style = """
-                <style>
-                    .ma-table {
-                        width: 100%;
-                        border-collapse: collapse;
-                        font-size: 1.1rem; /* Phóng to chữ */
-                        background-color: #1E1E1E;
-                        border-radius: 10px;
-                        overflow: hidden;
-                        box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-                        margin-bottom: 20px;
-                    }
-                    .ma-table th {
-                        background-color: #263238;
-                        color: #00E676;
-                        padding: 15px;
-                        text-align: center; /* Căn giữa tiêu đề */
-                        font-weight: bold;
-                        border-bottom: 2px solid #444;
-                        text-transform: uppercase;
-                        font-size: 0.9rem;
-                    }
-                    .ma-table td {
-                        padding: 15px;
-                        text-align: center; /* Căn giữa nội dung */
-                        border-bottom: 1px solid #333;
-                        color: #E0E0E0;
-                    }
-                    .ma-table tr:last-child td {
-                        border-bottom: none;
-                    }
-                    .ma-table tr:hover {
-                        background-color: rgba(255, 255, 255, 0.05);
-                    }
-                    .highlight-val {
-                        font-weight: bold;
-                        font-size: 1.2rem;
-                    }
-                </style>
-                """
-                
-                table_header = """
-                <table class="ma-table">
-                    <thead>
-                        <tr>
-                            <th>Đường MA</th>
-                            <th>Lãi TB/Năm</th>
-                            <th>Số Lệnh</th>
-                            <th>Số Thắng</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                """
-                
-                # Loại bỏ indentation thừa để tránh lỗi markdown code block
-                final_html = textwrap.dedent(table_style) + textwrap.dedent(table_header)
+                # Sửa lỗi hiển thị HTML bảng bằng cách ép chuỗi thành 1 dòng (strip newline)
+                table_html = """<table class="ma-table"><thead><tr><th>Đường MA</th><th>Lãi TB/Năm</th><th>Số Lệnh</th><th>Số Thắng</th></tr></thead><tbody>"""
                 
                 for _, row in top_mas_df.iterrows():
                     roi_val = row['Annual ROI']
                     roi_color = "#00E676" if roi_val > 0 else "#FF5252"
                     
-                    row_html = f"""
-                        <tr>
-                            <td class="highlight-val">MA {int(row['MA'])}</td>
-                            <td style="color: {roi_color}; font-weight: bold;">{roi_val:.2f}%</td>
-                            <td>{int(row['Trades'])}</td>
-                            <td>{int(row['Wins'])}</td>
-                        </tr>
-                    """
-                    final_html += row_html
+                    row_html = f"""<tr><td class="highlight-val">MA {int(row['MA'])}</td><td style="color: {roi_color}; font-weight: bold;">{roi_val:.2f}%</td><td>{int(row['Trades'])}</td><td>{int(row['Wins'])}</td></tr>"""
+                    table_html += row_html
                 
-                final_html += "</tbody></table>"
-                st.markdown(final_html, unsafe_allow_html=True)
+                table_html += "</tbody></table>"
+                st.markdown(table_html, unsafe_allow_html=True)
 
         except Exception as e:
             st.error(f"Đã xảy ra lỗi hiển thị: {e}")
