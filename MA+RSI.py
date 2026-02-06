@@ -221,32 +221,38 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# === PHẦN NHẬP LIỆU (ĐÃ BỎ FORM ĐỂ TĂNG TƯƠNG TÁC) ===
+# === CALLBACK XỬ LÝ SỰ KIỆN ===
+def trigger_analysis():
+    # Khi ấn Enter hoặc bấm nút, hàm này sẽ chạy
+    st.session_state['run_analysis'] = True
+    # Cập nhật mã ticker từ ô input (dùng key 'ticker_input_key')
+    if 'ticker_input_key' in st.session_state:
+        st.session_state['confirmed_ticker'] = st.session_state['ticker_input_key'].strip().upper()
+
+# === PHẦN NHẬP LIỆU ===
 col1, col2, col3 = st.columns([1, 2, 1]) 
 with col2:
     # 2 Cột Input
     c_ticker, c_sl = st.columns([2, 1])
     with c_ticker:
-        # Nếu chưa có mã, mặc định trống. 
-        # Sử dụng on_change để tránh reload liên tục không cần thiết, nhưng ở đây dùng button để confirm là tốt nhất
-        ticker_input_val = st.text_input("Mã cổ phiếu:", value=st.session_state.get('last_input_ticker', ''), placeholder="VD: HPG, VNM...").upper()
+        # Sử dụng key để bind dữ liệu và on_change để bắt sự kiện Enter
+        st.text_input(
+            "Mã cổ phiếu:", 
+            value=st.session_state.get('confirmed_ticker', ''), 
+            placeholder="VD: HPG, VNM...",
+            key="ticker_input_key", # Key dùng để truy xuất giá trị
+            on_change=trigger_analysis # Hàm chạy khi ấn Enter
+        )
         
     with c_sl:
         # Stoploss: Thay đổi là ăn ngay (Reactive)
         stop_loss_input = st.number_input("Cắt lỗ % (0 = Tắt):", min_value=0.0, max_value=20.0, value=7.0, step=0.5)
 
-    # Nút bấm nằm dưới
-    run_btn = st.button('🚀 PHÂN TÍCH & TỐI ƯU HÓA', use_container_width=True)
+    # Nút bấm nằm dưới - cũng gọi hàm trigger_analysis
+    run_btn = st.button('🚀 PHÂN TÍCH & TỐI ƯU HÓA', use_container_width=True, on_click=trigger_analysis)
 
-# === LOGIC XỬ LÝ (REACTIVE) ===
+# === LOGIC XỬ LÝ ===
 
-# 1. Xử lý sự kiện bấm nút (Confirm mã mới)
-if run_btn:
-    st.session_state['confirmed_ticker'] = ticker_input_val.strip()
-    st.session_state['last_input_ticker'] = ticker_input_val.strip() # Giữ giá trị input
-    st.session_state['run_analysis'] = True
-
-# 2. Xử lý chính
 if st.session_state.get('run_analysis', False) and st.session_state.get('confirmed_ticker'):
     
     # Hack ẩn bàn phím mobile
@@ -292,8 +298,6 @@ if st.session_state.get('run_analysis', False) and st.session_state.get('confirm
                     st.stop()
         
         # --- BƯỚC 2: TÍNH TOÁN CHIẾN THUẬT (Luôn chạy lại khi SL thay đổi) ---
-        # Logic: Vì stop_loss_input nằm ngoài form, thay đổi giá trị sẽ làm script rerun.
-        # Script chạy đến đây sẽ dùng stop_loss_input MỚI NHẤT để tính toán lại trên data CŨ (trong cache).
         if 'data' in st.session_state:
             # Không dùng spinner ở đây để cảm giác mượt mà (instant) khi chỉnh số
             df_calc = st.session_state['data']
