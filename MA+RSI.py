@@ -177,8 +177,9 @@ def optimize_ma_strategy_dual(df, user_sl_pct):
     # 1. Quét MA (5 -> 205)
     ma_ranges = range(5, 206, 10)
     
-    # 2. Quét SL (0 -> 15, bước 1%) - Để tìm SL tốt nhất hệ thống
-    sl_ranges = range(0, 16, 1) # 0, 1, 2... 15%
+    # 2. Quét SL (0% -> 10%, bước 0.5%) 
+    # Tạo mảng: 0, 0.5, 1.0, 1.5 ... 10.0
+    sl_ranges = [i * 0.5 for i in range(0, 21)] 
     
     # Progress bar để user đỡ sốt ruột
     progress_text = "Đang chạy siêu tối ưu hóa (MA & Stoploss)..."
@@ -397,7 +398,7 @@ if st.session_state.get('run_analysis', False) and st.session_state.get('confirm
                     <div style='text-align:center;'>
                          <div class='backtest-label'>🤖 AI TỐI ƯU (MA {best_ma_val})</div>
                         <div class='backtest-val' style='color:{ai_color}'>{best_opt_roi_val:+.1f}%<span style='font-size:1rem'>/năm</span></div>
-                        <div class='backtest-sub'>SL Tối ưu: <b style='color:#FFF'>{best_opt_sl_val}%</b></div>
+                        <div class='backtest-sub'>SL Tối ưu: <b style='color:#FFF'>{best_opt_sl_val:.1f}%</b></div>
                     </div>
                     <div style='border-left:1px solid #546E7A; height:60px;'></div>
                     <div style='text-align:center;'>
@@ -413,8 +414,8 @@ if st.session_state.get('run_analysis', False) and st.session_state.get('confirm
             report = f"""
             <div class='report-box'>
                 <div class='report-header'>📝 KẾT QUẢ TỐI ƯU HÓA KÉP</div>
-                <div class='report-item'><span class='icon-dot'>🧠</span> <span>Hệ thống đã chạy thử nghiệm kết hợp các đường MA và mức Stoploss (0-15%).</span></div>
-                <div class='report-item'><span class='icon-dot'>🏆</span> <span>Chiến lược tốt nhất: <b>MA {best_ma_val}</b> đi kèm mức cắt lỗ <b>{best_opt_sl_val}%</b>.</span></div>
+                <div class='report-item'><span class='icon-dot'>🧠</span> <span>Hệ thống đã chạy thử nghiệm kết hợp các đường MA và mức Stoploss (0-10%, bước 0.5%).</span></div>
+                <div class='report-item'><span class='icon-dot'>🏆</span> <span>Chiến lược tốt nhất: <b>MA {best_ma_val}</b> đi kèm mức cắt lỗ <b>{best_opt_sl_val:.1f}%</b>.</span></div>
                 <div class='report-item'><span class='icon-dot'>⚖️</span> <span>So sánh: Nếu dùng SL {current_user_sl}% của bạn trên cùng đường MA này, hiệu quả là <b>{user_roi_val:.1f}%/năm</b>.</span></div>
             </div>
             """
@@ -486,9 +487,10 @@ if st.session_state.get('run_analysis', False) and st.session_state.get('confirm
                     c_ai = "#00E676" if ai_roi > 0 else "#FF5252"
                     c_user = "#00E676" if user_roi > 0 else "#FF5252"
                     
+                    # Hiển thị SL với 1 số lẻ thập phân
                     row_html = f"""<tr>
                         <td class="highlight-val">MA {int(row['MA'])}</td>
-                        <td style="color:#FFB74D; font-weight:bold">{int(row['Opt SL'])}%</td>
+                        <td style="color:#FFB74D; font-weight:bold">{row['Opt SL']:.1f}%</td>
                         <td style="color:{c_ai}; font-weight:bold">{ai_roi:.2f}%</td>
                         <td style="color:{c_user}">{user_roi:.2f}%</td>
                     </tr>"""
