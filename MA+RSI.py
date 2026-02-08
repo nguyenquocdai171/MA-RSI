@@ -115,7 +115,6 @@ def calculate_rsi(data, window=14):
 
 # --- HÀM BACKTEST (CORE) ---
 def run_backtest_for_ma(prices_series, ma_series, rsi_series, stop_loss_pct):
-    # Chuyển sang numpy array để loop nhanh tối đa
     p_arr = prices_series.values
     ma_arr = ma_series.values
     rsi_arr = rsi_series.values
@@ -188,19 +187,15 @@ def optimize_ma_strategy_dual(df, user_sl_pct):
     ma_ranges = range(5, 206, 10)
     
     # 2. Quét SL (0% -> 10%, bước 0.5%) 
-    # Tạo mảng: 0, 0.5, 1.0, 1.5 ... 10.0
     sl_ranges = [i * 0.5 for i in range(0, 21)] 
     
-    # Progress bar để user đỡ sốt ruột
     progress_text = "Đang chạy siêu tối ưu hóa (MA & Stoploss)..."
     my_bar = st.progress(0, text=progress_text)
     total_steps = len(ma_ranges)
     
     for idx, ma_period in enumerate(ma_ranges):
-        # Tính MA một lần cho mỗi chu kỳ MA (Tối ưu hiệu năng)
         ma_series = prices.rolling(window=ma_period).mean()
         
-        # --- A. Tìm SL tốt nhất cho đường MA này (Vòng lặp con) ---
         best_sl_for_this_ma = 0
         best_roi_for_this_ma = -99999
         best_stats_for_this_ma = None
@@ -212,33 +207,27 @@ def optimize_ma_strategy_dual(df, user_sl_pct):
                 best_sl_for_this_ma = sl_opt
                 best_stats_for_this_ma = (total_roi, annual_roi, trades, wins)
         
-        # --- B. Tính hiệu quả với SL của User (Để so sánh) ---
         u_total, u_annual, u_trades, u_wins = run_backtest_for_ma(prices, ma_series, rsi, user_sl_pct)
         
-        # Lưu kết quả
         if best_stats_for_this_ma:
             results.append({
                 'MA': ma_period,
-                # Thông số tối ưu nhất (AI tìm ra)
                 'Opt SL': best_sl_for_this_ma,
                 'Opt Annual ROI': best_stats_for_this_ma[1],
                 'Opt Trades': best_stats_for_this_ma[2],
                 'Opt Wins': best_stats_for_this_ma[3],
-                # Thông số theo User nhập (Để so sánh)
                 'User SL': user_sl_pct,
                 'User Annual ROI': u_annual,
                 'User Trades': u_trades
             })
             
-        # Update progress
         my_bar.progress((idx + 1) / total_steps, text=progress_text)
         
-    my_bar.empty() # Xóa thanh loading khi xong
+    my_bar.empty()
         
     results_df = pd.DataFrame(results)
     if results_df.empty: return None, None
     
-    # Sắp xếp theo kết quả Tối ưu nhất của AI
     best_res = results_df.loc[results_df['Opt Annual ROI'].idxmax()]
     return best_res, results_df
 
@@ -278,7 +267,6 @@ def trigger_analysis():
     if 'ticker_input_key' in st.session_state:
         st.session_state['confirmed_ticker'] = st.session_state['ticker_input_key'].strip().upper()
 
-# Khởi tạo state ban đầu cho widget nếu chưa có
 if 'ticker_input_key' not in st.session_state:
     st.session_state['ticker_input_key'] = ''
 
@@ -287,8 +275,6 @@ col1, col2, col3 = st.columns([1, 2, 1])
 with col2:
     c_ticker, c_sl = st.columns([2, 1])
     with c_ticker:
-        # QUAN TRỌNG: Bỏ tham số 'value=' để tránh xung đột state
-        # Chỉ dùng key và on_change
         st.text_input(
             "Mã cổ phiếu:", 
             placeholder="VD: HPG, VNM...",
@@ -304,7 +290,6 @@ with col2:
 
 if st.session_state.get('run_analysis', False) and st.session_state.get('confirmed_ticker'):
     
-    # Hack ẩn bàn phím mobile
     js_hack = f"""<script>function forceBlur(){{const activeElement=window.parent.document.activeElement;if(activeElement){{activeElement.blur();}}window.parent.document.body.focus();}}forceBlur();setTimeout(forceBlur,200);</script><div style="display:none;">{random.random()}</div>"""
     components.html(js_hack, height=0)
 
@@ -331,7 +316,6 @@ if st.session_state.get('run_analysis', False) and st.session_state.get('confirm
                     st.session_state['data'] = df_full
                     st.session_state['current_symbol'] = symbol
                     
-                    # Intraday
                     df_intra = yf.download(symbol, period="1d", interval="5m", progress=False)
                     if isinstance(df_intra.columns, pd.MultiIndex): df_intra.columns = df_intra.columns.get_level_values(0)
                     if not df_intra.empty:
@@ -348,17 +332,13 @@ if st.session_state.get('run_analysis', False) and st.session_state.get('confirm
         # --- BƯỚC 2: TÍNH TOÁN CHIẾN THUẬT (QUÉT KÉP) ---
         if 'data' in st.session_state:
             df_calc = st.session_state['data']
-            # Gọi hàm tối ưu kép
             best_res, results_df = optimize_ma_strategy_dual(df_calc, current_user_sl)
             
             if best_res is not None:
                 st.session_state['best_ma'] = int(best_res['MA'])
-                st.session_state['best_opt_sl'] = best_res['Opt SL'] # SL tốt nhất AI tìm ra
+                st.session_state['best_opt_sl'] = best_res['Opt SL']
                 st.session_state['best_opt_roi'] = best_res['Opt Annual ROI']
-                
-                # Thông tin so sánh (Của user)
                 st.session_state['user_roi'] = best_res['User Annual ROI']
-                
                 st.session_state['top_mas'] = results_df.sort_values(by='Opt Annual ROI', ascending=False).head(5)
             else:
                 st.error("Không đủ dữ liệu tính toán.")
@@ -375,7 +355,6 @@ if st.session_state.get('run_analysis', False) and st.session_state.get('confirm
             user_roi_val = st.session_state['user_roi']
             top_mas_df = st.session_state['top_mas']
             
-            # Tính đường Best MA
             df['BestSMA'] = df['Close'].rolling(window=best_ma_val).mean()
             
             curr = df.iloc[-1]
@@ -384,7 +363,6 @@ if st.session_state.get('run_analysis', False) and st.session_state.get('confirm
             curr_ma = curr['BestSMA']
             curr_rsi = curr['RSI']
             
-            # Logic Recommendation (Dựa trên Best MA + Best SL)
             rec = "QUAN SÁT (WAIT)"
             reason = "Chưa có tín hiệu."
             bg_class = "bg-blue"
@@ -403,31 +381,30 @@ if st.session_state.get('run_analysis', False) and st.session_state.get('confirm
 
             st.markdown(f"<div class='result-card {bg_class}'><div class='result-title'>{rec}</div><div class='result-reason'>💡 {reason}</div></div>", unsafe_allow_html=True)
             
-            # --- HIỂN THỊ SO SÁNH (STYLE MỚI GIỐNG ẢNH) ---
-            
-            # Text hiển thị SL Tối ưu
+            # --- HIỂN THỊ SO SÁNH (Sử dụng textwrap.dedent để tránh lỗi HTML) ---
             txt_sl_opt = f"Với SL {best_opt_sl_val:.1f}%" if best_opt_sl_val > 0 else "Với SL OFF"
+            ai_color = "#00E676" if best_opt_roi_val > 0 else "#FF5252"
+            user_color = "#00E676" if user_roi_val > 0 else "#FF5252"
             
-            st.markdown(f"""
+            backtest_html = f"""
             <div class='backtest-box'>
                 <div class='bt-col'>
                     <div class='bt-label'>CỦA BẠN (SL {current_user_sl}%)</div>
-                    <div class='bt-value' style='color:#00E676'>{user_roi_val:+.1f}%<span class='bt-unit'>/năm</span></div>
+                    <div class='bt-value' style='color:{user_color}'>{user_roi_val:+.1f}%<span class='bt-unit'>/năm</span></div>
                     <div class='bt-sub'>Hiệu quả TB</div>
                 </div>
-                
                 <div class='sep-line'></div>
-                
                 <div class='bt-col'>
                     <div class='bt-label'>TỐI ƯU NHẤT <span class='top-badge'>TOP</span></div>
-                    <div class='bt-value' style='color:#FFD600'>{best_opt_roi_val:+.1f}%<span class='bt-unit'>/năm</span></div>
+                    <div class='bt-value' style='color:{ai_color}'>{best_opt_roi_val:+.1f}%<span class='bt-unit'>/năm</span></div>
                     <div class='bt-sub'>{txt_sl_opt}</div>
                 </div>
             </div>
-            """, unsafe_allow_html=True)
+            """
+            st.markdown(textwrap.dedent(backtest_html), unsafe_allow_html=True)
             
             # REPORT
-            report = f"""
+            report_html = f"""
             <div class='report-box'>
                 <div class='report-header'>📝 KẾT QUẢ TỐI ƯU HÓA KÉP</div>
                 <div class='report-item'><span class='icon-dot'>🧠</span> <span>Hệ thống đã chạy thử nghiệm kết hợp các đường MA và mức Stoploss (0-10%, bước 0.5%).</span></div>
@@ -435,10 +412,10 @@ if st.session_state.get('run_analysis', False) and st.session_state.get('confirm
                 <div class='report-item'><span class='icon-dot'>⚖️</span> <span>So sánh: Nếu dùng SL {current_user_sl}% của bạn trên cùng đường MA này, hiệu quả là <b>{user_roi_val:.1f}%/năm</b>.</span></div>
             </div>
             """
-            st.markdown(report, unsafe_allow_html=True)
+            st.markdown(textwrap.dedent(report_html), unsafe_allow_html=True)
             st.markdown("<br>", unsafe_allow_html=True)
             
-            # INTRADAY
+            # INTRADAY CHART
             if not df_intra.empty:
                 st.divider()
                 latest_date = df_intra.index[0].strftime('%d/%m/%Y')
@@ -451,7 +428,6 @@ if st.session_state.get('run_analysis', False) and st.session_state.get('confirm
                 fig_intra.update_layout(height=350, xaxis_rangeslider_visible=False, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='#FAFAFA'), margin=dict(l=10, r=10, t=10, b=10), xaxis=dict(showgrid=True, gridwidth=1, gridcolor='#333', tickformat="%H:%M"), yaxis=dict(showgrid=True, gridwidth=1, gridcolor='#333', autorange=True))
                 st.plotly_chart(fig_intra, use_container_width=True, config={'scrollZoom': False, 'displayModeBar': False})
 
-            # METRICS
             col_m1, col_m2, col_m3, col_m4 = st.columns(4)
             with col_m1: render_metric_card("GIÁ ĐÓNG CỬA", f"{curr['Close']:,.0f}", curr['Close'] - prev['Close'])
             with col_m2: render_metric_card("RSI (14)", f"{curr['RSI']:.1f}", curr['RSI'] - prev['RSI'])
@@ -503,7 +479,6 @@ if st.session_state.get('run_analysis', False) and st.session_state.get('confirm
                     c_ai = "#00E676" if ai_roi > 0 else "#FF5252"
                     c_user = "#00E676" if user_roi > 0 else "#FF5252"
                     
-                    # Hiển thị SL với 1 số lẻ thập phân
                     row_html = f"""<tr>
                         <td class="highlight-val">MA {int(row['MA'])}</td>
                         <td style="color:#FFB74D; font-weight:bold">{row['Opt SL']:.1f}%</td>
@@ -513,7 +488,8 @@ if st.session_state.get('run_analysis', False) and st.session_state.get('confirm
                     table_html += row_html
                 
                 table_html += "</tbody></table>"
-                st.markdown(table_html, unsafe_allow_html=True)
+                # Cũng dùng textwrap.dedent cho bảng để chắc chắn
+                st.markdown(textwrap.dedent(table_html), unsafe_allow_html=True)
 
         except Exception as e:
             st.error(f"Đã xảy ra lỗi hiển thị: {e}")
