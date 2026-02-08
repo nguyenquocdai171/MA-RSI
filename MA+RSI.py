@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 # --- CẤU HÌNH TRANG WEB ---
 st.set_page_config(layout="wide", page_title="Stock Advisor", page_icon="📈")
 
-# --- CSS TÙY CHỈNH (Giữ nguyên giao diện đẹp) ---
+# --- CSS TÙY CHỈNH ---
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;700;900&display=swap');
@@ -268,14 +268,19 @@ def trigger_analysis():
     if 'ticker_input_key' in st.session_state:
         st.session_state['confirmed_ticker'] = st.session_state['ticker_input_key'].strip().upper()
 
+# Khởi tạo state ban đầu cho widget nếu chưa có
+if 'ticker_input_key' not in st.session_state:
+    st.session_state['ticker_input_key'] = ''
+
 # === PHẦN NHẬP LIỆU ===
 col1, col2, col3 = st.columns([1, 2, 1]) 
 with col2:
     c_ticker, c_sl = st.columns([2, 1])
     with c_ticker:
+        # QUAN TRỌNG: Bỏ tham số 'value=' để tránh xung đột state
+        # Chỉ dùng key và on_change
         st.text_input(
             "Mã cổ phiếu:", 
-            value=st.session_state.get('confirmed_ticker', ''), 
             placeholder="VD: HPG, VNM...",
             key="ticker_input_key",
             on_change=trigger_analysis
