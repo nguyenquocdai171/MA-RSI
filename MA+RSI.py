@@ -72,15 +72,25 @@ st.markdown("""
     
     div.stButton > button { width: 100%; border-radius: 8px; font-weight: bold; height: 50px; font-size: 1.1rem; }
     
-    /* BACKTEST RESULT BOX */
+    /* BACKTEST RESULT BOX (New Style) */
     .backtest-box {
-        background: linear-gradient(135deg, #263238 0%, #37474F 100%);
-        border-radius: 10px; padding: 20px; margin-top: 20px; text-align: center;
-        border: 1px solid #546E7A;
+        background-color: #263238;
+        border-radius: 10px;
+        padding: 30px 20px;
+        margin-top: 20px;
+        border: 1px solid #37474F;
+        display: flex;
+        align-items: center;
+        justify-content: space-around;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.3);
     }
-    .backtest-label { color: #CFD8DC; font-size: 1rem; margin-bottom: 5px; }
-    .backtest-val { color: #00E676; font-size: 2rem; font-weight: 900; }
-    .backtest-sub { color: #AAA; font-size: 0.8rem; }
+    .bt-col { flex: 1; text-align: center; }
+    .bt-label { font-size: 0.9rem; color: #B0BEC5; font-weight: bold; text-transform: uppercase; margin-bottom: 8px; letter-spacing: 0.5px; }
+    .bt-value { font-size: 2.8rem; font-weight: 900; margin: 5px 0; line-height: 1.1; }
+    .bt-unit { font-size: 1.2rem; font-weight: bold; }
+    .bt-sub { font-size: 0.85rem; color: #78909C; margin-top: 5px; }
+    .top-badge { background-color: #FFD600; color: #000; padding: 3px 6px; border-radius: 4px; font-size: 0.75rem; font-weight: 800; vertical-align: middle; margin-left: 6px; }
+    .sep-line { border-left: 1px solid #455A64; height: 80px; width: 1px; margin: 0 20px; opacity: 0.5; }
     
     /* TABLE CUSTOM STYLE */
     .ma-table { width: 100%; border-collapse: collapse; font-size: 1.1rem; background-color: #1E1E1E; border-radius: 10px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.3); margin-bottom: 20px; }
@@ -393,24 +403,25 @@ if st.session_state.get('run_analysis', False) and st.session_state.get('confirm
 
             st.markdown(f"<div class='result-card {bg_class}'><div class='result-title'>{rec}</div><div class='result-reason'>💡 {reason}</div></div>", unsafe_allow_html=True)
             
-            # --- HIỂN THỊ SO SÁNH (AI vs USER) ---
-            ai_color = "#00E676" if best_opt_roi_val > 0 else "#FF5252"
-            user_color = "#00E676" if user_roi_val > 0 else "#FF5252"
+            # --- HIỂN THỊ SO SÁNH (STYLE MỚI GIỐNG ẢNH) ---
+            
+            # Text hiển thị SL Tối ưu
+            txt_sl_opt = f"Với SL {best_opt_sl_val:.1f}%" if best_opt_sl_val > 0 else "Với SL OFF"
             
             st.markdown(f"""
             <div class='backtest-box'>
-                <div style='display:flex; justify-content:space-around; align-items:center;'>
-                    <div style='text-align:center;'>
-                         <div class='backtest-label'>🤖 AI TỐI ƯU (MA {best_ma_val})</div>
-                        <div class='backtest-val' style='color:{ai_color}'>{best_opt_roi_val:+.1f}%<span style='font-size:1rem'>/năm</span></div>
-                        <div class='backtest-sub'>SL Tối ưu: <b style='color:#FFF'>{best_opt_sl_val:.1f}%</b></div>
-                    </div>
-                    <div style='border-left:1px solid #546E7A; height:60px;'></div>
-                    <div style='text-align:center;'>
-                        <div class='backtest-label'>👤 CÀI ĐẶT CỦA BẠN</div>
-                        <div class='backtest-val' style='color:{user_color}'>{user_roi_val:+.1f}%<span style='font-size:1rem'>/năm</span></div>
-                        <div class='backtest-sub'>SL Bạn chọn: <b style='color:#FFF'>{current_user_sl}%</b></div>
-                    </div>
+                <div class='bt-col'>
+                    <div class='bt-label'>CỦA BẠN (SL {current_user_sl}%)</div>
+                    <div class='bt-value' style='color:#00E676'>{user_roi_val:+.1f}%<span class='bt-unit'>/năm</span></div>
+                    <div class='bt-sub'>Hiệu quả TB</div>
+                </div>
+                
+                <div class='sep-line'></div>
+                
+                <div class='bt-col'>
+                    <div class='bt-label'>TỐI ƯU NHẤT <span class='top-badge'>TOP</span></div>
+                    <div class='bt-value' style='color:#FFD600'>{best_opt_roi_val:+.1f}%<span class='bt-unit'>/năm</span></div>
+                    <div class='bt-sub'>{txt_sl_opt}</div>
                 </div>
             </div>
             """, unsafe_allow_html=True)
