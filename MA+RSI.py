@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 # --- CẤU HÌNH TRANG WEB ---
 st.set_page_config(layout="wide", page_title="Stock Advisor", page_icon="📈")
 
-# --- CSS TÙY CHỈNH ---
+# --- CSS TÙY CHỈNH (Giữ nguyên giao diện đẹp) ---
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;700;900&display=swap');
@@ -79,7 +79,8 @@ st.markdown("""
         border: 1px solid #546E7A;
     }
     .backtest-label { color: #CFD8DC; font-size: 1rem; margin-bottom: 5px; }
-    .backtest-val { color: #00E676; font-size: 2.5rem; font-weight: 900; }
+    .backtest-val { color: #00E676; font-size: 2rem; font-weight: 900; }
+    .backtest-sub { color: #AAA; font-size: 0.8rem; }
     
     /* TABLE CUSTOM STYLE */
     .ma-table { width: 100%; border-collapse: collapse; font-size: 1.1rem; background-color: #1E1E1E; border-radius: 10px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.3); margin-bottom: 20px; }
@@ -102,17 +103,18 @@ def calculate_rsi(data, window=14):
     rsi = 100 - (100 / (1 + rs))
     return rsi
 
-# --- HÀM BACKTEST CHO TỪNG ĐƯỜNG MA ---
+# --- HÀM BACKTEST (CORE) ---
 def run_backtest_for_ma(prices_series, ma_series, rsi_series, stop_loss_pct):
+    # Chuyển sang numpy array để loop nhanh tối đa
+    p_arr = prices_series.values
+    ma_arr = ma_series.values
+    rsi_arr = rsi_series.values
+    
     cash = 100_000_000
     initial_capital = cash
     shares = 0
     trade_count = 0
     wins = 0
-    
-    p_arr = prices_series.values
-    ma_arr = ma_series.values
-    rsi_arr = rsi_series.values
     
     last_buy_price = 0
     use_sl = stop_loss_pct > 0
@@ -143,7 +145,7 @@ def run_backtest_for_ma(prices_series, ma_series, rsi_series, stop_loss_pct):
                 if pct_loss <= -stop_loss_pct:
                     is_sell = True
             
-            # Chốt lời theo chiến thuật
+            # Chốt lời chiến thuật
             if not is_sell:
                 if price > ma and rsi > 70:
                     is_sell = True
@@ -166,29 +168,67 @@ def run_backtest_for_ma(prices_series, ma_series, rsi_series, stop_loss_pct):
     
     return total_roi, avg_annual_roi, trade_count, wins
 
-# --- HÀM TỐI ƯU HÓA ---
-def optimize_ma_strategy(df, stop_loss_pct):
+# --- HÀM TỐI ƯU HÓA KÉP (MA + SL) ---
+def optimize_ma_strategy_dual(df, user_sl_pct):
     prices = df['Close']
     rsi = df['RSI']
     results = []
-    ma_ranges = range(5, 206, 10) 
     
-    for ma_period in ma_ranges:
+    # 1. Quét MA (5 -> 205)
+    ma_ranges = range(5, 206, 10)
+    
+    # 2. Quét SL (0 -> 15, bước 1%) - Để tìm SL tốt nhất hệ thống
+    sl_ranges = range(0, 16, 1) # 0, 1, 2... 15%
+    
+    # Progress bar để user đỡ sốt ruột
+    progress_text = "Đang chạy siêu tối ưu hóa (MA & Stoploss)..."
+    my_bar = st.progress(0, text=progress_text)
+    total_steps = len(ma_ranges)
+    
+    for idx, ma_period in enumerate(ma_ranges):
+        # Tính MA một lần cho mỗi chu kỳ MA (Tối ưu hiệu năng)
         ma_series = prices.rolling(window=ma_period).mean()
-        total_roi, annual_roi, trades, wins = run_backtest_for_ma(prices, ma_series, rsi, stop_loss_pct)
         
-        results.append({
-            'MA': ma_period,
-            'Total ROI': total_roi,
-            'Annual ROI': annual_roi,
-            'Trades': trades,
-            'Wins': wins
-        })
+        # --- A. Tìm SL tốt nhất cho đường MA này (Vòng lặp con) ---
+        best_sl_for_this_ma = 0
+        best_roi_for_this_ma = -99999
+        best_stats_for_this_ma = None
+        
+        for sl_opt in sl_ranges:
+            total_roi, annual_roi, trades, wins = run_backtest_for_ma(prices, ma_series, rsi, sl_opt)
+            if annual_roi > best_roi_for_this_ma:
+                best_roi_for_this_ma = annual_roi
+                best_sl_for_this_ma = sl_opt
+                best_stats_for_this_ma = (total_roi, annual_roi, trades, wins)
+        
+        # --- B. Tính hiệu quả với SL của User (Để so sánh) ---
+        u_total, u_annual, u_trades, u_wins = run_backtest_for_ma(prices, ma_series, rsi, user_sl_pct)
+        
+        # Lưu kết quả
+        if best_stats_for_this_ma:
+            results.append({
+                'MA': ma_period,
+                # Thông số tối ưu nhất (AI tìm ra)
+                'Opt SL': best_sl_for_this_ma,
+                'Opt Annual ROI': best_stats_for_this_ma[1],
+                'Opt Trades': best_stats_for_this_ma[2],
+                'Opt Wins': best_stats_for_this_ma[3],
+                # Thông số theo User nhập (Để so sánh)
+                'User SL': user_sl_pct,
+                'User Annual ROI': u_annual,
+                'User Trades': u_trades
+            })
+            
+        # Update progress
+        my_bar.progress((idx + 1) / total_steps, text=progress_text)
+        
+    my_bar.empty() # Xóa thanh loading khi xong
         
     results_df = pd.DataFrame(results)
     if results_df.empty: return None, None
     
-    best_res = results_df.loc[results_df['Annual ROI'].idxmax()]
+    # Sắp xếp theo kết quả Tối ưu nhất của AI
+    best_res = results_df.loc[results_df['Opt Annual ROI'].idxmax()]
     return best_res, results_df
 
 # --- HELPER UI ---
@@ -210,12 +250,12 @@ def render_metric_card(label, value, delta=None, color=None):
 
 # --- MAIN APP ---
 st.markdown("<h1 class='main-title'>STOCK ADVISOR</h1>", unsafe_allow_html=True)
-st.markdown("<p class='sub-title'>Hệ thống Tối ưu hóa Chiến thuật MA & RSI</p>", unsafe_allow_html=True)
+st.markdown("<p class='sub-title'>Hệ thống Tối ưu hóa Kép (MA & Stoploss)</p>", unsafe_allow_html=True)
 
 st.markdown("""
 <div class='disclaimer-box'>
     <div class='disclaimer-title'>⚠️ TUYÊN BỐ MIỄN TRỪ TRÁCH NHIỆM</div>
-    <div class='d-line-1'>Công cụ tự động tối ưu hóa tham số MA quá khứ.</div>
+    <div class='d-line-1'>Công cụ tự động tối ưu hóa tham số quá khứ.</div>
     <div class='d-line-2'>KHÔNG phải lời khuyên đầu tư tài chính chính thức.</div>
     <div class='d-line-3'>Người dùng tự chịu trách nhiệm. Dữ liệu Yahoo Finance.</div>
 </div>
@@ -223,33 +263,26 @@ st.markdown("""
 
 # === CALLBACK XỬ LÝ SỰ KIỆN ===
 def trigger_analysis():
-    # Khi ấn Enter hoặc bấm nút, hàm này sẽ chạy
     st.session_state['run_analysis'] = True
-    # Cập nhật mã ticker từ ô input (dùng key 'ticker_input_key')
     if 'ticker_input_key' in st.session_state:
         st.session_state['confirmed_ticker'] = st.session_state['ticker_input_key'].strip().upper()
 
 # === PHẦN NHẬP LIỆU ===
 col1, col2, col3 = st.columns([1, 2, 1]) 
 with col2:
-    # 2 Cột Input
     c_ticker, c_sl = st.columns([2, 1])
     with c_ticker:
-        # Sử dụng key để bind dữ liệu và on_change để bắt sự kiện Enter
         st.text_input(
             "Mã cổ phiếu:", 
             value=st.session_state.get('confirmed_ticker', ''), 
             placeholder="VD: HPG, VNM...",
-            key="ticker_input_key", # Key dùng để truy xuất giá trị
-            on_change=trigger_analysis # Hàm chạy khi ấn Enter
+            key="ticker_input_key",
+            on_change=trigger_analysis
         )
-        
     with c_sl:
-        # Stoploss: Thay đổi là ăn ngay (Reactive)
-        stop_loss_input = st.number_input("Cắt lỗ % (0 = Tắt):", min_value=0.0, max_value=20.0, value=7.0, step=0.5)
+        stop_loss_input = st.number_input("SL mong muốn (%):", min_value=0.0, max_value=20.0, value=7.0, step=0.5, help="Mức cắt lỗ bạn muốn áp dụng để so sánh với AI")
 
-    # Nút bấm nằm dưới - cũng gọi hàm trigger_analysis
-    run_btn = st.button('🚀 PHÂN TÍCH & TỐI ƯU HÓA', use_container_width=True, on_click=trigger_analysis)
+    run_btn = st.button('🚀 PHÂN TÍCH & SIÊU TỐI ƯU', use_container_width=True, on_click=trigger_analysis)
 
 # === LOGIC XỬ LÝ ===
 
@@ -260,14 +293,14 @@ if st.session_state.get('run_analysis', False) and st.session_state.get('confirm
     components.html(js_hack, height=0)
 
     ticker = st.session_state['confirmed_ticker']
-    current_sl = stop_loss_input # Luôn lấy giá trị hiện tại từ widget
+    current_user_sl = stop_loss_input 
 
     if not ticker:
         st.warning("⚠️ Vui lòng nhập mã cổ phiếu!")
     else:
         symbol = ticker if ".VN" in ticker else f"{ticker}.VN"
         
-        # --- BƯỚC 1: TẢI DỮ LIỆU (Chỉ tải lại nếu Mã cổ phiếu thay đổi) ---
+        # --- BƯỚC 1: TẢI DỮ LIỆU ---
         if 'data' not in st.session_state or st.session_state.get('current_symbol') != symbol:
             with st.spinner(f'Đang tải dữ liệu {ticker}...'):
                 try:
@@ -279,7 +312,6 @@ if st.session_state.get('run_analysis', False) and st.session_state.get('confirm
                     if isinstance(df_full.columns, pd.MultiIndex): df_full.columns = df_full.columns.get_level_values(0)
                     df_full['RSI'] = calculate_rsi(df_full['Close'], 14)
                     
-                    # Lưu cache
                     st.session_state['data'] = df_full
                     st.session_state['current_symbol'] = symbol
                     
@@ -297,16 +329,21 @@ if st.session_state.get('run_analysis', False) and st.session_state.get('confirm
                     st.error(f"Lỗi tải dữ liệu: {e}")
                     st.stop()
         
-        # --- BƯỚC 2: TÍNH TOÁN CHIẾN THUẬT (Luôn chạy lại khi SL thay đổi) ---
+        # --- BƯỚC 2: TÍNH TOÁN CHIẾN THUẬT (QUÉT KÉP) ---
         if 'data' in st.session_state:
-            # Không dùng spinner ở đây để cảm giác mượt mà (instant) khi chỉnh số
             df_calc = st.session_state['data']
-            best_res, results_df = optimize_ma_strategy(df_calc, current_sl)
+            # Gọi hàm tối ưu kép
+            best_res, results_df = optimize_ma_strategy_dual(df_calc, current_user_sl)
             
             if best_res is not None:
                 st.session_state['best_ma'] = int(best_res['MA'])
-                st.session_state['best_annual_roi'] = best_res['Annual ROI']
-                st.session_state['top_mas'] = results_df.sort_values(by='Annual ROI', ascending=False).head(5)
+                st.session_state['best_opt_sl'] = best_res['Opt SL'] # SL tốt nhất AI tìm ra
+                st.session_state['best_opt_roi'] = best_res['Opt Annual ROI']
+                
+                # Thông tin so sánh (Của user)
+                st.session_state['user_roi'] = best_res['User Annual ROI']
+                
+                st.session_state['top_mas'] = results_df.sort_values(by='Opt Annual ROI', ascending=False).head(5)
             else:
                 st.error("Không đủ dữ liệu tính toán.")
                 st.stop()
@@ -315,10 +352,14 @@ if st.session_state.get('run_analysis', False) and st.session_state.get('confirm
         try:
             df = st.session_state['data']
             df_intra = st.session_state.get('data_intra', pd.DataFrame())
+            
             best_ma_val = st.session_state['best_ma']
-            best_annual_roi_val = st.session_state['best_annual_roi']
+            best_opt_sl_val = st.session_state['best_opt_sl']
+            best_opt_roi_val = st.session_state['best_opt_roi']
+            user_roi_val = st.session_state['user_roi']
             top_mas_df = st.session_state['top_mas']
             
+            # Tính đường Best MA
             df['BestSMA'] = df['Close'].rolling(window=best_ma_val).mean()
             
             curr = df.iloc[-1]
@@ -327,57 +368,60 @@ if st.session_state.get('run_analysis', False) and st.session_state.get('confirm
             curr_ma = curr['BestSMA']
             curr_rsi = curr['RSI']
             
+            # Logic Recommendation (Dựa trên Best MA + Best SL)
             rec = "QUAN SÁT (WAIT)"
             reason = "Chưa có tín hiệu."
             bg_class = "bg-blue"
             
             if curr_price < curr_ma and curr_rsi < 30:
                 rec = "MUA NGAY"
-                reason = f"Giá ({curr_price:,.0f}) < MA{best_ma_val} ({curr_ma:,.0f}) và RSI ({curr_rsi:.1f}) < 30."
+                reason = f"Giá ({curr_price:,.0f}) < MA{best_ma_val} và RSI ({curr_rsi:.1f}) < 30."
                 bg_class = "bg-green"
             elif curr_price > curr_ma and curr_rsi > 70:
                 rec = "BÁN NGAY"
-                reason = f"Giá ({curr_price:,.0f}) > MA{best_ma_val} ({curr_ma:,.0f}) và RSI ({curr_rsi:.1f}) > 70."
+                reason = f"Giá ({curr_price:,.0f}) > MA{best_ma_val} và RSI ({curr_rsi:.1f}) > 70."
                 bg_class = "bg-red"
             else:
-                if curr_price > curr_ma:
-                    reason = f"Giá đang nằm trên đường MA{best_ma_val} (Xu hướng tăng), chờ RSI > 70 để chốt lời."
-                else:
-                    reason = f"Giá đang nằm dưới đường MA{best_ma_val} (Xu hướng giảm), chờ RSI < 30 để mua."
+                if curr_price > curr_ma: reason = f"Giá trên MA{best_ma_val} (Xu hướng tăng), chờ RSI > 70."
+                else: reason = f"Giá dưới MA{best_ma_val} (Xu hướng giảm), chờ RSI < 30."
 
             st.markdown(f"<div class='result-card {bg_class}'><div class='result-title'>{rec}</div><div class='result-reason'>💡 {reason}</div></div>", unsafe_allow_html=True)
             
-            bk_color = "#00E676" if best_annual_roi_val > 0 else "#FF5252"
-            sl_text = f"Cắt lỗ {current_sl}%" if current_sl > 0 else "KHÔNG SL"
+            # --- HIỂN THỊ SO SÁNH (AI vs USER) ---
+            ai_color = "#00E676" if best_opt_roi_val > 0 else "#FF5252"
+            user_color = "#00E676" if user_roi_val > 0 else "#FF5252"
             
             st.markdown(f"""
             <div class='backtest-box'>
                 <div style='display:flex; justify-content:space-around; align-items:center;'>
                     <div style='text-align:center;'>
-                        <div class='backtest-label'>ĐƯỜNG MA TỐI ƯU</div>
-                        <div class='backtest-val' style='color:#FFF; font-size: 2rem;'>MA {best_ma_val}</div>
+                         <div class='backtest-label'>🤖 AI TỐI ƯU (MA {best_ma_val})</div>
+                        <div class='backtest-val' style='color:{ai_color}'>{best_opt_roi_val:+.1f}%<span style='font-size:1rem'>/năm</span></div>
+                        <div class='backtest-sub'>SL Tối ưu: <b style='color:#FFF'>{best_opt_sl_val}%</b></div>
                     </div>
-                    <div style='border-left:1px solid #546E7A; height:50px;'></div>
+                    <div style='border-left:1px solid #546E7A; height:60px;'></div>
                     <div style='text-align:center;'>
-                        <div class='backtest-label'>LỢI NHUẬN TB/NĂM</div>
-                        <div class='backtest-val' style='font-size:2rem; color:{bk_color}'>{best_annual_roi_val:+.1f}%</div>
-                        <div style='font-size:0.8rem; color:#AAA;'>({sl_text})</div>
+                        <div class='backtest-label'>👤 CÀI ĐẶT CỦA BẠN</div>
+                        <div class='backtest-val' style='color:{user_color}'>{user_roi_val:+.1f}%<span style='font-size:1rem'>/năm</span></div>
+                        <div class='backtest-sub'>SL Bạn chọn: <b style='color:#FFF'>{current_user_sl}%</b></div>
                     </div>
                 </div>
             </div>
             """, unsafe_allow_html=True)
             
+            # REPORT
             report = f"""
             <div class='report-box'>
-                <div class='report-header'>📝 PHÂN TÍCH TỐI ƯU HÓA</div>
-                <div class='report-item'><span class='icon-dot'>🏆</span> <span>Hệ thống đã quét các đường MA từ 5 đến 205.</span></div>
-                <div class='report-item'><span class='icon-dot'>✅</span> <span>Đường <b>MA{best_ma_val}</b> cho hiệu quả cao nhất lịch sử với mã {ticker}.</span></div>
-                <div class='report-item'><span class='icon-dot'>📊</span> <span>Chiến thuật sử dụng: Mua khi Giá < MA{best_ma_val} & RSI < 30. Bán khi Giá > MA{best_ma_val} & RSI > 70.</span></div>
+                <div class='report-header'>📝 KẾT QUẢ TỐI ƯU HÓA KÉP</div>
+                <div class='report-item'><span class='icon-dot'>🧠</span> <span>Hệ thống đã chạy thử nghiệm kết hợp các đường MA và mức Stoploss (0-15%).</span></div>
+                <div class='report-item'><span class='icon-dot'>🏆</span> <span>Chiến lược tốt nhất: <b>MA {best_ma_val}</b> đi kèm mức cắt lỗ <b>{best_opt_sl_val}%</b>.</span></div>
+                <div class='report-item'><span class='icon-dot'>⚖️</span> <span>So sánh: Nếu dùng SL {current_user_sl}% của bạn trên cùng đường MA này, hiệu quả là <b>{user_roi_val:.1f}%/năm</b>.</span></div>
             </div>
             """
             st.markdown(report, unsafe_allow_html=True)
             st.markdown("<br>", unsafe_allow_html=True)
             
+            # INTRADAY
             if not df_intra.empty:
                 st.divider()
                 latest_date = df_intra.index[0].strftime('%d/%m/%Y')
@@ -390,6 +434,7 @@ if st.session_state.get('run_analysis', False) and st.session_state.get('confirm
                 fig_intra.update_layout(height=350, xaxis_rangeslider_visible=False, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='#FAFAFA'), margin=dict(l=10, r=10, t=10, b=10), xaxis=dict(showgrid=True, gridwidth=1, gridcolor='#333', tickformat="%H:%M"), yaxis=dict(showgrid=True, gridwidth=1, gridcolor='#333', autorange=True))
                 st.plotly_chart(fig_intra, use_container_width=True, config={'scrollZoom': False, 'displayModeBar': False})
 
+            # METRICS
             col_m1, col_m2, col_m3, col_m4 = st.columns(4)
             with col_m1: render_metric_card("GIÁ ĐÓNG CỬA", f"{curr['Close']:,.0f}", curr['Close'] - prev['Close'])
             with col_m2: render_metric_card("RSI (14)", f"{curr['RSI']:.1f}", curr['RSI'] - prev['RSI'])
@@ -402,8 +447,8 @@ if st.session_state.get('run_analysis', False) and st.session_state.get('confirm
             st.markdown("<br>", unsafe_allow_html=True)
             st.divider()
             
-            # --- BIỂU ĐỒ KỸ THUẬT ---
-            st.markdown(f"### 📊 Biểu đồ Kỹ Thuật & Top MA")
+            # --- CHART ---
+            st.markdown(f"### 📊 Biểu đồ Kỹ Thuật & Top Hiệu Quả")
             time_tabs = st.radio("Khung thời gian:", ["1 Tháng", "3 Tháng", "6 Tháng", "1 Năm", "3 Năm", "Tất cả"], horizontal=True, index=3)
             
             df_chart = df.copy()
@@ -430,15 +475,23 @@ if st.session_state.get('run_analysis', False) and st.session_state.get('confirm
                 st.plotly_chart(fig2, use_container_width=True, config={'scrollZoom': False})
 
             with col_c2:
-                st.markdown("### 🏆 Top 5 Đường MA Hiệu Quả")
+                st.markdown("### 🏆 Top 5 Combo Tốt Nhất")
                 
-                table_html = """<table class="ma-table"><thead><tr><th>Đường MA</th><th>Lãi TB/Năm</th><th>Số Lệnh</th><th>Số Thắng</th></tr></thead><tbody>"""
+                table_html = """<table class="ma-table"><thead><tr><th>Đường MA</th><th>SL Tối Ưu</th><th>Lãi AI/Năm</th><th>Lãi Của Bạn/Năm</th></tr></thead><tbody>"""
                 
                 for _, row in top_mas_df.iterrows():
-                    roi_val = row['Annual ROI']
-                    roi_color = "#00E676" if roi_val > 0 else "#FF5252"
+                    ai_roi = row['Opt Annual ROI']
+                    user_roi = row['User Annual ROI']
                     
-                    row_html = f"""<tr><td class="highlight-val">MA {int(row['MA'])}</td><td style="color: {roi_color}; font-weight: bold;">{roi_val:.2f}%</td><td>{int(row['Trades'])}</td><td>{int(row['Wins'])}</td></tr>"""
+                    c_ai = "#00E676" if ai_roi > 0 else "#FF5252"
+                    c_user = "#00E676" if user_roi > 0 else "#FF5252"
+                    
+                    row_html = f"""<tr>
+                        <td class="highlight-val">MA {int(row['MA'])}</td>
+                        <td style="color:#FFB74D; font-weight:bold">{int(row['Opt SL'])}%</td>
+                        <td style="color:{c_ai}; font-weight:bold">{ai_roi:.2f}%</td>
+                        <td style="color:{c_user}">{user_roi:.2f}%</td>
+                    </tr>"""
                     table_html += row_html
                 
                 table_html += "</tbody></table>"
