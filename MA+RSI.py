@@ -55,8 +55,8 @@ st.markdown("""
     /* REPORT BOX */
     .report-box { background-color: #1E1E1E; border: 1px solid #444; border-radius: 12px; padding: 25px; margin-top: 10px; }
     .report-header { color: #00E676; font-size: 1.2rem; font-weight: bold; margin-bottom: 15px; border-bottom: 1px solid #444; padding-bottom: 10px; text-transform: uppercase; }
-    .report-item { margin-bottom: 12px; font-size: 1rem; color: #FAFAFA; display: flex; align-items: center; }
-    .icon-dot { margin-right: 12px; font-size: 1.2rem; }
+    .report-item { margin-bottom: 12px; font-size: 1rem; color: #FAFAFA; display: flex; align-items: flex-start; }
+    .icon-dot { margin-right: 12px; font-size: 1.2rem; line-height: 1.2; }
 
     /* METRIC CARDS */
     .metric-container {
@@ -72,7 +72,7 @@ st.markdown("""
     
     div.stButton > button { width: 100%; border-radius: 8px; font-weight: bold; height: 50px; font-size: 1.1rem; }
     
-    /* BACKTEST RESULT BOX (New Style) */
+    /* BACKTEST RESULT BOX (Responsive Style) */
     .backtest-box {
         background-color: #263238;
         border-radius: 10px;
@@ -99,6 +99,27 @@ st.markdown("""
     .ma-table tr:last-child td { border-bottom: none; }
     .ma-table tr:hover { background-color: rgba(255, 255, 255, 0.05); }
     .highlight-val { font-weight: bold; font-size: 1.2rem; }
+    
+    /* THIẾT LẬP GIAO DIỆN MOBILE (Chống tràn chữ) */
+    @media (max-width: 768px) {
+        .backtest-box {
+            flex-direction: column;
+            padding: 20px 10px;
+        }
+        .sep-line {
+            width: 80%;
+            height: 1px;
+            border-left: none;
+            border-top: 1px solid #455A64;
+            margin: 20px 0;
+        }
+        .bt-value {
+            font-size: 2.2rem;
+        }
+        .main-title {
+            font-size: 2.2rem;
+        }
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -113,11 +134,12 @@ def calculate_rsi(data, window=14):
     rsi = 100 - (100 / (1 + rs))
     return rsi
 
-# --- HÀM BACKTEST (CORE) ---
+# --- HÀM BACKTEST (CORE) - Tính thêm Average Holding Days ---
 def run_backtest_for_ma(prices_series, ma_series, rsi_series, stop_loss_pct):
     p_arr = prices_series.values
     ma_arr = ma_series.values
     rsi_arr = rsi_series.values
+    dates_arr = prices_series.index # Lấy mảng ngày tháng
     
     cash = 100_000_000
     initial_capital = cash
@@ -126,10 +148,12 @@ def run_backtest_for_ma(prices_series, ma_series, rsi_series, stop_loss_pct):
     wins = 0
     
     last_buy_price = 0
+    buy_date = None
+    holding_days_list = [] # Lưu số ngày nắm giữ của các lệnh thắng/chốt lời chuẩn
     use_sl = stop_loss_pct > 0
     
     start_idx = 205 
-    if len(p_arr) <= start_idx: return -999, -999, 0, 0
+    if len(p_arr) <= start_idx: return -999, -999, 0, 0, 0
 
     for i in range(start_idx, len(p_arr)):
         price = p_arr[i]
@@ -144,27 +168,37 @@ def run_backtest_for_ma(prices_series, ma_series, rsi_series, stop_loss_pct):
                 shares = cash / price
                 cash = 0
                 last_buy_price = price
+                buy_date = dates_arr[i] # Ghi nhận ngày mua
         
         # BÁN
         elif shares > 0:
-            is_sell = False
+            is_sl_sell = False
+            is_strat_sell = False
+            
             # Cắt lỗ
             if use_sl:
                 pct_loss = (price - last_buy_price) / last_buy_price * 100
                 if pct_loss <= -stop_loss_pct:
-                    is_sell = True
+                    is_sl_sell = True
             
             # Chốt lời chiến thuật
-            if not is_sell:
+            if not is_sl_sell:
                 if price > ma and rsi > 70:
-                    is_sell = True
+                    is_strat_sell = True
             
-            if is_sell:
+            if is_sl_sell or is_strat_sell:
                 sell_val = shares * price
                 if sell_val > shares * last_buy_price: wins += 1
                 cash = sell_val
                 shares = 0
                 trade_count += 1
+                
+                # CHỈ TÍNH ngày nắm giữ khi bán theo đúng chiến thuật (không tính cắt lỗ)
+                if is_strat_sell and buy_date is not None:
+                    h_days = (dates_arr[i] - buy_date).days
+                    holding_days_list.append(h_days)
+                
+                buy_date = None # Reset ngày mua
                 
     final_val = cash + (shares * p_arr[-1])
     total_roi = ((final_val - initial_capital) / initial_capital) * 100
@@ -175,7 +209,10 @@ def run_backtest_for_ma(prices_series, ma_series, rsi_series, stop_loss_pct):
     years = days / 365.25
     avg_annual_roi = total_roi / years if years > 0 else 0
     
-    return total_roi, avg_annual_roi, trade_count, wins
+    # Tính trung bình ngày nắm giữ
+    avg_holding_days = sum(holding_days_list) / len(holding_days_list) if len(holding_days_list) > 0 else 0
+    
+    return total_roi, avg_annual_roi, trade_count, wins, avg_holding_days
 
 # --- HÀM TỐI ƯU HÓA KÉP (MA + SL) ---
 def optimize_ma_strategy_dual(df, user_sl_pct):
@@ -201,13 +238,14 @@ def optimize_ma_strategy_dual(df, user_sl_pct):
         best_stats_for_this_ma = None
         
         for sl_opt in sl_ranges:
-            total_roi, annual_roi, trades, wins = run_backtest_for_ma(prices, ma_series, rsi, sl_opt)
+            total_roi, annual_roi, trades, wins, avg_hold = run_backtest_for_ma(prices, ma_series, rsi, sl_opt)
             if annual_roi > best_roi_for_this_ma:
                 best_roi_for_this_ma = annual_roi
                 best_sl_for_this_ma = sl_opt
-                best_stats_for_this_ma = (total_roi, annual_roi, trades, wins)
+                best_stats_for_this_ma = (total_roi, annual_roi, trades, wins, avg_hold)
         
-        u_total, u_annual, u_trades, u_wins = run_backtest_for_ma(prices, ma_series, rsi, user_sl_pct)
+        # Chạy check cho user input để so sánh
+        u_total, u_annual, u_trades, u_wins, u_avg_hold = run_backtest_for_ma(prices, ma_series, rsi, user_sl_pct)
         
         if best_stats_for_this_ma:
             results.append({
@@ -216,6 +254,7 @@ def optimize_ma_strategy_dual(df, user_sl_pct):
                 'Opt Annual ROI': best_stats_for_this_ma[1],
                 'Opt Trades': best_stats_for_this_ma[2],
                 'Opt Wins': best_stats_for_this_ma[3],
+                'Opt Avg Hold': best_stats_for_this_ma[4],
                 'User SL': user_sl_pct,
                 'User Annual ROI': u_annual,
                 'User Trades': u_trades
@@ -338,6 +377,7 @@ if st.session_state.get('run_analysis', False) and st.session_state.get('confirm
                 st.session_state['best_ma'] = int(best_res['MA'])
                 st.session_state['best_opt_sl'] = best_res['Opt SL']
                 st.session_state['best_opt_roi'] = best_res['Opt Annual ROI']
+                st.session_state['best_opt_hold'] = best_res['Opt Avg Hold'] # Lưu Avg Hold
                 st.session_state['user_roi'] = best_res['User Annual ROI']
                 st.session_state['top_mas'] = results_df.sort_values(by='Opt Annual ROI', ascending=False).head(5)
             else:
@@ -352,6 +392,7 @@ if st.session_state.get('run_analysis', False) and st.session_state.get('confirm
             best_ma_val = st.session_state['best_ma']
             best_opt_sl_val = st.session_state['best_opt_sl']
             best_opt_roi_val = st.session_state['best_opt_roi']
+            best_opt_hold_val = st.session_state.get('best_opt_hold', 0)
             user_roi_val = st.session_state['user_roi']
             top_mas_df = st.session_state['top_mas']
             
@@ -381,7 +422,7 @@ if st.session_state.get('run_analysis', False) and st.session_state.get('confirm
 
             st.markdown(f"<div class='result-card {bg_class}'><div class='result-title'>{rec}</div><div class='result-reason'>💡 {reason}</div></div>", unsafe_allow_html=True)
             
-            # --- HIỂN THỊ SO SÁNH (Sử dụng textwrap.dedent để tránh lỗi HTML) ---
+            # --- HIỂN THỊ SO SÁNH ---
             txt_sl_opt = f"Với SL {best_opt_sl_val:.1f}%" if best_opt_sl_val > 0 else "Với SL OFF"
             ai_color = "#00E676" if best_opt_roi_val > 0 else "#FF5252"
             user_color = "#00E676" if user_roi_val > 0 else "#FF5252"
@@ -403,12 +444,13 @@ if st.session_state.get('run_analysis', False) and st.session_state.get('confirm
             """
             st.markdown(textwrap.dedent(backtest_html), unsafe_allow_html=True)
             
-            # REPORT
+            # REPORT (CẬP NHẬT THÊM SỐ NGÀY NẮM GIỮ)
             report_html = f"""
             <div class='report-box'>
                 <div class='report-header'>📝 KẾT QUẢ TỐI ƯU HÓA KÉP</div>
                 <div class='report-item'><span class='icon-dot'>🧠</span> <span>Hệ thống đã chạy thử nghiệm kết hợp các đường MA và mức Stoploss (0-10%, bước 0.5%).</span></div>
                 <div class='report-item'><span class='icon-dot'>🏆</span> <span>Chiến lược tốt nhất: <b>MA {best_ma_val}</b> đi kèm mức cắt lỗ <b>{best_opt_sl_val:.1f}%</b>.</span></div>
+                <div class='report-item'><span class='icon-dot'>⏳</span> <span>Thời gian nắm giữ TB: <b>{int(best_opt_hold_val)} ngày</b> / lệnh (không tính lệnh bị dính cắt lỗ).</span></div>
                 <div class='report-item'><span class='icon-dot'>⚖️</span> <span>So sánh: Nếu dùng SL {current_user_sl}% của bạn trên cùng đường MA này, hiệu quả là <b>{user_roi_val:.1f}%/năm</b>.</span></div>
             </div>
             """
@@ -488,7 +530,6 @@ if st.session_state.get('run_analysis', False) and st.session_state.get('confirm
                     table_html += row_html
                 
                 table_html += "</tbody></table>"
-                # Cũng dùng textwrap.dedent cho bảng để chắc chắn
                 st.markdown(textwrap.dedent(table_html), unsafe_allow_html=True)
 
         except Exception as e:
