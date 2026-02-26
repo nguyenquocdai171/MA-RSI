@@ -89,7 +89,8 @@ st.markdown("""
     .bt-value { font-size: 2.8rem; font-weight: 900; margin: 5px 0; line-height: 1.1; }
     .bt-unit { font-size: 1.2rem; font-weight: bold; }
     .bt-sub { font-size: 0.85rem; color: #78909C; margin-top: 5px; }
-    .top-badge { background-color: #FFD600; color: #000; padding: 3px 6px; border-radius: 4px; font-size: 0.75rem; font-weight: 800; vertical-align: middle; margin-left: 6px; }
+    .rec-badge { background-color: #00E5FF; color: #000; padding: 3px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 800; vertical-align: middle; margin-left: 6px; }
+    .hold-badge { background-color: #37474F; color: #ECEFF1; padding: 6px 15px; border-radius: 20px; font-size: 0.85rem; font-weight: bold; display: inline-block; box-shadow: 0 2px 4px rgba(0,0,0,0.2); border: 1px solid #455A64; }
     .sep-line { border-left: 1px solid #455A64; height: 80px; width: 1px; margin: 0 20px; opacity: 0.5; }
     
     /* TABLE CUSTOM STYLE */
@@ -257,7 +258,8 @@ def optimize_ma_strategy_dual(df, user_sl_pct):
                 'Opt Avg Hold': best_stats_for_this_ma[4],
                 'User SL': user_sl_pct,
                 'User Annual ROI': u_annual,
-                'User Trades': u_trades
+                'User Trades': u_trades,
+                'User Avg Hold': u_avg_hold
             })
             
         my_bar.progress((idx + 1) / total_steps, text=progress_text)
@@ -377,8 +379,9 @@ if st.session_state.get('run_analysis', False) and st.session_state.get('confirm
                 st.session_state['best_ma'] = int(best_res['MA'])
                 st.session_state['best_opt_sl'] = best_res['Opt SL']
                 st.session_state['best_opt_roi'] = best_res['Opt Annual ROI']
-                st.session_state['best_opt_hold'] = best_res['Opt Avg Hold'] # Lưu Avg Hold
+                st.session_state['best_opt_hold'] = best_res['Opt Avg Hold'] 
                 st.session_state['user_roi'] = best_res['User Annual ROI']
+                st.session_state['user_avg_hold'] = best_res['User Avg Hold'] # Lưu Avg Hold cho User
                 st.session_state['top_mas'] = results_df.sort_values(by='Opt Annual ROI', ascending=False).head(5)
             else:
                 st.error("Không đủ dữ liệu tính toán.")
@@ -394,6 +397,7 @@ if st.session_state.get('run_analysis', False) and st.session_state.get('confirm
             best_opt_roi_val = st.session_state['best_opt_roi']
             best_opt_hold_val = st.session_state.get('best_opt_hold', 0)
             user_roi_val = st.session_state['user_roi']
+            user_avg_hold_val = st.session_state.get('user_avg_hold', 0)
             top_mas_df = st.session_state['top_mas']
             
             df['BestSMA'] = df['Close'].rolling(window=best_ma_val).mean()
@@ -423,8 +427,8 @@ if st.session_state.get('run_analysis', False) and st.session_state.get('confirm
             st.markdown(f"<div class='result-card {bg_class}'><div class='result-title'>{rec}</div><div class='result-reason'>💡 {reason}</div></div>", unsafe_allow_html=True)
             
             # --- HIỂN THỊ SO SÁNH ---
-            txt_sl_opt = f"Với SL {best_opt_sl_val:.1f}%" if best_opt_sl_val > 0 else "Với SL OFF"
-            ai_color = "#00E676" if best_opt_roi_val > 0 else "#FF5252"
+            txt_sl_opt = f"Với mức Stoploss {best_opt_sl_val:.1f}%" if best_opt_sl_val > 0 else "Không dùng Stoploss"
+            ai_color = "#00E5FF" if best_opt_roi_val > 0 else "#FF5252" # Màu Cyan cá tính giống ảnh
             user_color = "#00E676" if user_roi_val > 0 else "#FF5252"
             
             backtest_html = f"""
@@ -432,25 +436,26 @@ if st.session_state.get('run_analysis', False) and st.session_state.get('confirm
                 <div class='bt-col'>
                     <div class='bt-label'>CỦA BẠN (SL {current_user_sl}%)</div>
                     <div class='bt-value' style='color:{user_color}'>{user_roi_val:+.1f}%<span class='bt-unit'>/năm</span></div>
-                    <div class='bt-sub'>Hiệu quả TB</div>
+                    <div class='bt-sub'>Hiệu quả lợi nhuận trung bình</div>
+                    <div style="margin-top: 15px;"><span class='hold-badge'>⏳ Nắm giữ TB: {int(user_avg_hold_val)} ngày</span></div>
                 </div>
                 <div class='sep-line'></div>
                 <div class='bt-col'>
-                    <div class='bt-label'>TỐI ƯU NHẤT <span class='top-badge'>TOP</span></div>
+                    <div class='bt-label'>TỐI ƯU NHẤT <span class='rec-badge'>RECOMMENDED</span></div>
                     <div class='bt-value' style='color:{ai_color}'>{best_opt_roi_val:+.1f}%<span class='bt-unit'>/năm</span></div>
                     <div class='bt-sub'>{txt_sl_opt}</div>
+                    <div style="margin-top: 15px;"><span class='hold-badge'>⏳ Nắm giữ TB: {int(best_opt_hold_val)} ngày</span></div>
                 </div>
             </div>
             """
             st.markdown(textwrap.dedent(backtest_html), unsafe_allow_html=True)
             
-            # REPORT (CẬP NHẬT THÊM SỐ NGÀY NẮM GIỮ)
+            # REPORT
             report_html = f"""
             <div class='report-box'>
                 <div class='report-header'>📝 KẾT QUẢ TỐI ƯU HÓA KÉP</div>
                 <div class='report-item'><span class='icon-dot'>🧠</span> <span>Hệ thống đã chạy thử nghiệm kết hợp các đường MA và mức Stoploss (0-10%, bước 0.5%).</span></div>
                 <div class='report-item'><span class='icon-dot'>🏆</span> <span>Chiến lược tốt nhất: <b>MA {best_ma_val}</b> đi kèm mức cắt lỗ <b>{best_opt_sl_val:.1f}%</b>.</span></div>
-                <div class='report-item'><span class='icon-dot'>⏳</span> <span>Thời gian nắm giữ TB: <b>{int(best_opt_hold_val)} ngày</b> / lệnh (không tính lệnh bị dính cắt lỗ).</span></div>
                 <div class='report-item'><span class='icon-dot'>⚖️</span> <span>So sánh: Nếu dùng SL {current_user_sl}% của bạn trên cùng đường MA này, hiệu quả là <b>{user_roi_val:.1f}%/năm</b>.</span></div>
             </div>
             """
@@ -518,7 +523,7 @@ if st.session_state.get('run_analysis', False) and st.session_state.get('confirm
                     ai_roi = row['Opt Annual ROI']
                     user_roi = row['User Annual ROI']
                     
-                    c_ai = "#00E676" if ai_roi > 0 else "#FF5252"
+                    c_ai = "#00E5FF" if ai_roi > 0 else "#FF5252"
                     c_user = "#00E676" if user_roi > 0 else "#FF5252"
                     
                     row_html = f"""<tr>
