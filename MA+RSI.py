@@ -298,7 +298,7 @@ st.markdown("""
     <div class='disclaimer-title'>⚠️ TUYÊN BỐ MIỄN TRỪ TRÁCH NHIỆM</div>
     <div class='d-line-1'>Công cụ tự động tối ưu hóa tham số quá khứ.</div>
     <div class='d-line-2'>KHÔNG phải lời khuyên đầu tư tài chính chính thức.</div>
-    <div class='d-line-3'>Người dùng tự chịu trách nhiệm. Dữ liệu Yahoo Finance.</div>
+    <div class='d-line-3'>Người dùng tự chịu trách nhiệm..</div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -539,3 +539,4 @@ if st.session_state.get('run_analysis', False) and st.session_state.get('confirm
 
         except Exception as e:
             st.error(f"Đã xảy ra lỗi hiển thị: {e}")
+
